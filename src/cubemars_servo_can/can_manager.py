@@ -96,8 +96,22 @@ class CAN_Manager_servo(object):
                     f"Failed to open CAN interface '{channel}'. "
                     f"Ensure the interface exists and is UP before starting the app."
                 ) from e
-            # Create a python-can notifier object, which motors can later subscribe to
-            cls._instance.notifier = can.Notifier(bus=cls._instance.bus, listeners=[])
+
+            try:
+                # Create a python-can notifier object, which motors can later subscribe to
+                cls._instance.notifier = can.Notifier(
+                    bus=cls._instance.bus, listeners=[]
+                )
+            except Exception as e:
+                try:
+                    cls._instance.bus.shutdown()
+                except Exception:
+                    pass
+                cls._instance = None
+                raise RuntimeError(
+                    f"Failed to start CAN listener on interface '{channel}'."
+                ) from e
+
             cls._instance._listeners = {}
             cls._instance._closed = False
             print("Connected on: " + str(cls._instance.bus))
@@ -136,11 +150,18 @@ class CAN_Manager_servo(object):
             return
 
         if hasattr(self, "notifier"):
-            self.notifier.stop()
+            try:
+                self.notifier.stop()
+            except Exception:
+                pass
         if hasattr(self, "bus"):
-            self.bus.shutdown()
+            try:
+                self.bus.shutdown()
+            except Exception:
+                pass
 
-        self._listeners.clear()
+        if hasattr(self, "_listeners"):
+            self._listeners.clear()
         self._closed = True
 
         if CAN_Manager_servo._instance is self:

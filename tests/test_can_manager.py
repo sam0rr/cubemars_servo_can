@@ -195,6 +195,29 @@ class TestSingletonBehavior:
 
         assert CAN_Manager_servo._instance is None
 
+    def test_notifier_init_failure_resets_singleton(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        mock_can["can"].Notifier.side_effect = RuntimeError("listener setup failed")
+
+        with pytest.raises(RuntimeError, match="Failed to start CAN listener"):
+            CAN_Manager_servo(channel="can0")
+
+        assert CAN_Manager_servo._instance is None
+        mock_can["bus"].shutdown.assert_called_once()
+
+    def test_notifier_init_failure_swallows_shutdown_error(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        mock_can["can"].Notifier.side_effect = RuntimeError("listener setup failed")
+        mock_can["bus"].shutdown.side_effect = RuntimeError("shutdown failed")
+
+        with pytest.raises(RuntimeError, match="Failed to start CAN listener"):
+            CAN_Manager_servo(channel="can0")
+
+        assert CAN_Manager_servo._instance is None
+        mock_can["bus"].shutdown.assert_called_once()
+
 
 class TestMotorListener:
     """Tests for listener message dispatch."""
@@ -318,6 +341,38 @@ class TestListenerRegistrationLifecycle:
         can_manager.close()
         mock_can["notifier"].stop.assert_called_once()
         mock_can["bus"].shutdown.assert_called_once()
+        assert can_manager._closed is True
+        assert CAN_Manager_servo._instance is None
+
+    def test_close_swallows_notifier_stop_error_and_continues(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.add_motor(MagicMock())
+        mock_can["notifier"].stop.side_effect = RuntimeError("stop failed")
+
+        can_manager.close()
+
+        mock_can["notifier"].stop.assert_called_once()
+        mock_can["bus"].shutdown.assert_called_once()
+        assert can_manager._listeners == {}
+        assert can_manager._closed is True
+        assert CAN_Manager_servo._instance is None
+
+    def test_close_swallows_bus_shutdown_error_and_continues(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.add_motor(MagicMock())
+        mock_can["bus"].shutdown.side_effect = RuntimeError("shutdown failed")
+
+        can_manager.close()
+
+        mock_can["notifier"].stop.assert_called_once()
+        mock_can["bus"].shutdown.assert_called_once()
+        assert can_manager._listeners == {}
+        assert can_manager._closed is True
+        assert CAN_Manager_servo._instance is None
 
     def test_del_swallows_close_errors(self, mock_can: Dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")

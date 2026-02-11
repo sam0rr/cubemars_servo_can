@@ -25,7 +25,7 @@ class CubeMarsServoCAN:
         motor_ID: int = 1,
         max_mosfett_temp: float = 50.0,
         CSV_file: Optional[str] = None,
-        log_vars: List[str] = DEFAULT_LOG_VARIABLES,
+        log_vars: Optional[List[str]] = None,
         can_channel: str = "can0",
         config_overrides: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -68,7 +68,7 @@ class CubeMarsServoCAN:
         self._command_sent = False
         self._async_error: Optional[RuntimeError] = None
 
-        self.log_vars = log_vars
+        self.log_vars = list(DEFAULT_LOG_VARIABLES if log_vars is None else log_vars)
         self.LOG_FUNCTIONS = {
             "motor_position": self.get_motor_angle_radians,
             "motor_speed": self.get_motor_velocity_radians_per_second,
@@ -85,6 +85,7 @@ class CubeMarsServoCAN:
         Used to safely power the motor on and begin the log file.
         """
         print(f"Turning on control for device: {self.device_info_string()}")
+        powered_on = False
         try:
             if self.csv_file_name is not None:
                 with open(self.csv_file_name, "w") as fd:
@@ -94,6 +95,7 @@ class CubeMarsServoCAN:
                 self.csv_writer = csv.writer(self.csv_file)
 
             self.power_on()
+            powered_on = True
             self._send_command()
             self._entered = True
             if not self.check_can_connection():
@@ -101,7 +103,7 @@ class CubeMarsServoCAN:
             return self
         except Exception:
             # Best-effort rollback to avoid leaving the motor powered when entry fails.
-            if self._entered:
+            if powered_on:
                 try:
                     self.power_off()
                 except Exception:

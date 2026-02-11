@@ -8,14 +8,14 @@ The test suite is treated as the source of truth.
 ## Validation Commands
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
-UV_CACHE_DIR=/tmp/uv-cache uv run ruff check src tests
+UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen ruff check src tests
+UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 ```
 
 Current validation result:
 
-- `100 passed`
-- Source coverage: `100%` (`524/524` statements)
+- `112 passed`
+- Source coverage: `100%` (`545/545` statements)
 - `ruff`: clean
 
 ## Verified Bug Register (Sequential IDs)
@@ -151,13 +151,39 @@ Status legend:
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Tests: `TestContextManagerAndUpdateBranches`
 
+22. `BUG-022` `__enter__` could leave motor powered if `_send_command()` failed before `_entered=True`.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_enter_failure_after_power_on_still_powers_off`
+
+23. `BUG-023` CAN manager singleton could remain half-initialized if notifier setup failed.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Tests: `test_notifier_init_failure_resets_singleton`, `test_notifier_init_failure_swallows_shutdown_error`
+
+24. `BUG-024` `close()` could leave singleton/resources partially active if notifier or bus shutdown raised.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Tests:
+  `test_close_swallows_notifier_stop_error_and_continues`,
+  `test_close_swallows_bus_shutdown_error_and_continues`
+
+25. `BUG-025` Mutable default `log_vars` leaked custom log fields across motor instances.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_default_log_vars_are_isolated_per_instance`
+
 ## Corrected Prior Inaccurate Claim
 
 1. `CORR-001` Prior claim: temperature overflow at 127C due to `np.int16(data[6])`.
 
 - Status: `corrected`
 - Fact: `data[6]` is 0..255 and does not overflow at 127 or 255 in `int16`.
-- Current parser uses `np.uint8`, which is explicit and correct for an unsigned byte.
+- Current parser uses `struct.unpack(">hhhBB", ...)`, where `B` decodes temperature as an unsigned byte.
 - Tests: `TestTemperatureParsing`
 
 ## Regression and Functionality Retention
@@ -181,4 +207,4 @@ Inherited defects were verified against:
 
 - `TMotorCANControl/src/TMotorCANControl/servo_can.py`
 
-Confirmed inherited patterns included negative `dt`, unit mismatches in limit checks, weak connection check behavior, and silent send failure behavior.
+Confirmed inherited patterns included negative `dt`, unit mismatches in limit checks, weak connection check behavior, silent send failure behavior, and mutable-default argument leakage.

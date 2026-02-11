@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.2 - 2026-02-11
+
+### Fixed
+
+- Hardened `CubeMarsServoCAN.__enter__` rollback to always attempt `power_off()` after any post-power-on failure (including `_send_command()` exceptions before `_entered=True`).
+- Hardened CAN manager startup to reset singleton state and shut down the partially opened bus if `can.Notifier(...)` initialization fails.
+- Hardened `CAN_Manager_servo.close()` to be best-effort: notifier/bus errors no longer block listener cleanup, closed-state finalization, or singleton reset.
+- Replaced mutable default `log_vars` argument with per-instance list initialization to prevent cross-instance state leakage.
+
+### Validation
+
+- Test suite: `112 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`545/545` statements)
+- Lint: `ruff` clean
+
 ## 0.2.1 - 2026-02-11
 
 ### Fixed

@@ -54,6 +54,19 @@ class TestInitialization:
             channel="can0", bustype="socketcan"
         )
 
+    def test_default_log_vars_are_isolated_per_instance(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        from cubemars_servo_can.constants import DEFAULT_LOG_VARIABLES
+
+        motor1 = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor2 = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=2)
+
+        motor1.log_vars.append("custom_metric")
+
+        assert "custom_metric" not in motor2.log_vars
+        assert "custom_metric" not in DEFAULT_LOG_VARIABLES
+
 
 class TestEnterExit:
     """Tests for context manager enter/exit."""
@@ -726,6 +739,21 @@ class TestContextManagerAndUpdateBranches:
         with patch.object(motor, "check_can_connection", return_value=False):
             with pytest.raises(RuntimeError, match="Device not connected"):
                 motor.__enter__()
+        assert motor._entered is False
+
+    def test_enter_failure_after_power_on_still_powers_off(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+
+        with patch.object(
+            motor, "_send_command", side_effect=RuntimeError("send boom")
+        ):
+            with patch.object(motor, "power_off") as power_off:
+                with pytest.raises(RuntimeError, match="send boom"):
+                    motor.__enter__()
+                power_off.assert_called_once()
+
         assert motor._entered is False
 
     def test_enter_failure_closes_csv_and_swallows_power_off_failure(
