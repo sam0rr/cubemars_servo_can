@@ -8,16 +8,7 @@ This guide covers how to initialize the motor and use the various control modes 
 
 The library uses a context manager (`with` block) to safely handle the connection, power-on sequence, and shutdown.
 
-If you want the library to configure `socketcan` for you, call:
-
-```python
-from cubemars_servo_can.can_manager import CAN_Manager_servo
-
-# Requires sufficient privileges on your host.
-CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
-```
-
-This requires host permissions (`CAP_NET_ADMIN`). The library does not run `sudo` implicitly.
+Recommended production flow: bring `can0` up at boot, then run the Python app as a normal user.
 
 ### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
 
@@ -36,8 +27,7 @@ Then configure `can0` (example):
 
 ```bash
 sudo ip link set can0 up type can bitrate 1000000
-sudo ifconfig can0 txqueuelen 65536
-sudo ifconfig can0 up
+sudo ip link set can0 txqueuelen 65536
 ```
 
 Running the Python app itself without `sudo` is supported once `can0` is already up.
@@ -48,11 +38,59 @@ Use one of these patterns:
 - Advanced: grant `CAP_NET_ADMIN` to networking tools if you need non-root link setup at runtime:
 
 ```bash
-sudo setcap cap_net_admin+ep /sbin/ip
-sudo setcap cap_net_admin+ep /sbin/ifconfig
+sudo apt install -y libcap2-bin iproute2
+IP_BIN="$(readlink -f "$(command -v ip)")"
+sudo setcap cap_net_admin+ep "$IP_BIN"
+getcap "$IP_BIN"
 ```
 
 Security note: capability grants are host-level privileges. Review your system policy before using them.
+
+### Recommended Boot-Time `can0` Setup (systemd)
+
+Create `/etc/systemd/system/can0.service`:
+
+```ini
+[Unit]
+Description=Bring up SocketCAN can0
+After=network-pre.target
+Before=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'ip link set can0 down || true'
+ExecStart=/bin/sh -c 'ip link set can0 up type can bitrate 1000000'
+ExecStart=/bin/sh -c 'ip link set can0 txqueuelen 65536'
+ExecStop=/bin/sh -c 'ip link set can0 down'
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and verify:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now can0.service
+ip -details link show can0
+```
+
+After this, your Python app should not call `configure_socketcan()` during normal runtime.
+
+### Optional Admin Helper
+
+`CAN_Manager_servo.configure_socketcan(...)` is still available for setup scripts and diagnostics.
+It requires `CAP_NET_ADMIN` and does not run `sudo` implicitly.
+
+```python
+from cubemars_servo_can.can_manager import CAN_Manager_servo
+
+CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
+```
+
+### Application Example
 
 ```python
 from cubemars_servo_can import CubeMarsServoCAN

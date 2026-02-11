@@ -124,7 +124,8 @@ class CAN_Manager_servo(object):
         This helper does not use sudo. Callers should run it with appropriate privileges.
         """
         try:
-            subprocess.run([ip_tool, "link", "set", channel, "down"], check=True)
+            run_kwargs = {"check": True, "capture_output": True, "text": True}
+            subprocess.run([ip_tool, "link", "set", channel, "down"], **run_kwargs)
             subprocess.run(
                 [
                     ip_tool,
@@ -137,13 +138,16 @@ class CAN_Manager_servo(object):
                     "bitrate",
                     str(bitrate),
                 ],
-                check=True,
+                **run_kwargs,
             )
         except FileNotFoundError as e:
             raise RuntimeError(f"Cannot find ip tool at '{ip_tool}'") from e
         except subprocess.CalledProcessError as e:
+            stderr = (e.stderr or "").strip()
+            detail = f": {stderr}" if stderr else ""
             raise RuntimeError(
-                f"Failed to configure socketcan interface '{channel}'"
+                f"Failed to configure socketcan interface '{channel}' via '{ip_tool}' "
+                f"(requires CAP_NET_ADMIN){detail}"
             ) from e
 
     def __del__(self) -> None:

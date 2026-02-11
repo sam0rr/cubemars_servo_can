@@ -282,6 +282,22 @@ class TestSocketCanConfiguration:
             with pytest.raises(RuntimeError, match="Failed to configure socketcan"):
                 CAN_Manager_servo.configure_socketcan(channel="can0")
 
+    def test_configure_socketcan_permission_error_surfaces_stderr(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        err = subprocess.CalledProcessError(
+            returncode=2,
+            cmd=["ip", "link", "set", "can0", "down"],
+            stderr="RTNETLINK answers: Operation not permitted",
+        )
+        with patch("cubemars_servo_can.can_manager.subprocess.run", side_effect=err):
+            with pytest.raises(RuntimeError) as exc_info:
+                CAN_Manager_servo.configure_socketcan(channel="can0")
+
+        message = str(exc_info.value)
+        assert "CAP_NET_ADMIN" in message
+        assert "Operation not permitted" in message
+
 
 class TestListenerRegistrationLifecycle:
     """Tests for listener add/remove and close behavior."""
