@@ -121,8 +121,12 @@ class CAN_Manager_servo(object):
             data: An array of integers or bytes of data to send.
             data_len: Length of the data array (usually 0 for these servo commands as data is in buffer)
         """
-        DLC = data_len
-        assert DLC <= 8, f"Data too long in message for motor {motor_id}"
+        # Validate data length - CAN messages can only have 0-8 bytes
+        actual_len = len(data)
+        if actual_len > 8:
+            raise ValueError(
+                f"Data buffer has {actual_len} bytes, but CAN max is 8 for motor {motor_id}"
+            )
 
         if self.debug:
             print(f"ID: {hex(motor_id)}   Data: [{', '.join(hex(d) for d in data)}]")

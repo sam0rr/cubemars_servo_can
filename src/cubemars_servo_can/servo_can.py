@@ -66,6 +66,7 @@ class CubeMarsServoCAN:
         self._last_update_time = self._start_time
         self._last_command_time: Optional[float] = None
         self._updated = False
+        self._command_sent = False
 
         self.log_vars = log_vars
         self.LOG_FUNCTIONS = {
@@ -139,14 +140,16 @@ class CubeMarsServoCAN:
             )
 
         now = time.time()
-        dt = self._last_update_time - now
+        dt = now - self._last_update_time
         self._last_update_time = now
 
         # Avoid division by zero if updates are instant
-        if dt != 0:
+        if abs(dt) > 1e-9:
             self._motor_state_async.acceleration = (
                 servo_state.velocity - self._motor_state_async.velocity
             ) / dt
+        else:
+            self._motor_state_async.acceleration = 0.0
 
         self._motor_state_async.set_state_obj(servo_state)
         self._updated = True
@@ -352,9 +355,12 @@ class CubeMarsServoCAN:
             vel: The desired speed to get there in rad/s (when in POSITION_VELOCITY mode)
             acc: The desired acceleration to get there in rad/s/s, ish (when in POSITION_VELOCITY mode)
         """
-        if np.abs(pos) >= self.config.P_max:
+        # Convert P_max from electrical units to radians for comparison
+        # P_max is in electrical degrees, convert to radians and account for gear ratio
+        p_max_rad = self.config.P_max * self.rad_per_Eang / self.config.GEAR_RATIO
+        if np.abs(pos) >= p_max_rad:
             raise RuntimeError(
-                f"Cannot control using impedance mode for angles with magnitude greater than {self.config.P_max} rad!"
+                f"Cannot control using position mode for angles with magnitude greater than {p_max_rad} rad!"
             )
 
         pos = pos / self.rad_per_Eang
@@ -401,9 +407,11 @@ class CubeMarsServoCAN:
         Args:
             vel: The desired output speed in rad/s
         """
-        if np.abs(vel) >= self.config.V_max:
+        # Convert V_max from ERPM to rad/s for comparison
+        v_max_rad_s = self.config.V_max * self.radps_per_ERPM
+        if np.abs(vel) >= v_max_rad_s:
             raise RuntimeError(
-                f"Cannot control using speed mode for angles with magnitude greater than {self.config.V_max} rad/s!"
+                f"Cannot control using speed mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
             )
 
         if self._control_state != ControlMode.VELOCITY:
@@ -428,6 +436,11 @@ class CubeMarsServoCAN:
             raise RuntimeError(
                 f"Attempted to send current command before entering current mode for device {self.device_info_string()}"
             )
+        # Enforce current limits (convert from scaled values in config)
+        if not (self.config.Curr_min / 100 <= current <= self.config.Curr_max / 100):
+            raise RuntimeError(
+                f"Current {current}A out of range [{self.config.Curr_min / 100}, {self.config.Curr_max / 100}]A"
+            )
         self._command.current = current
 
     def set_output_torque_newton_meters(self, torque: float) -> None:
@@ -439,6 +452,11 @@ class CubeMarsServoCAN:
         Args:
             torque: The desired output torque in Nm.
         """
+        # Enforce torque limits
+        if not (self.config.T_min <= torque <= self.config.T_max):
+            raise RuntimeError(
+                f"Torque {torque}Nm out of range [{self.config.T_min}, {self.config.T_max}]Nm"
+            )
         self.set_motor_current_qaxis_amps(
             torque / self.config.Kt_actual / self.config.GEAR_RATIO
         )
@@ -452,7 +470,8 @@ class CubeMarsServoCAN:
         Args:
             torque: The desired motor-side torque in Nm.
         """
-        self.set_output_torque_newton_meters(torque / self.config.GEAR_RATIO)
+        # Motor torque * GEAR_RATIO = Output torque
+        self.set_output_torque_newton_meters(torque * self.config.GEAR_RATIO)
 
     def set_motor_angle_radians(self, pos: float) -> None:
         """
@@ -488,7 +507,7 @@ class CubeMarsServoCAN:
         Returns:
             The most recently updated motor-side velocity in rad/s.
         """
-        return self._motor_state.velocity * self.config.GEAR_RATIO
+        return self._motor_state.velocity * self.radps_per_ERPM * self.config.GEAR_RATIO
 
     def get_motor_acceleration_radians_per_second_squared(self) -> float:
         """

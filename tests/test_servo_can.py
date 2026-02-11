@@ -169,7 +169,7 @@ class TestSafetyLimits:
 
         # Try to set position beyond P_max (32000)
         # Must account for gear ratio: 32000 * 9.0 = 288000
-        with pytest.raises(RuntimeError, match="Cannot control using impedance mode"):
+        with pytest.raises(RuntimeError, match="Cannot control using position mode"):
             motor.set_motor_angle_radians(300000.0)
 
     def test_velocity_limit_raises_error(self, mock_can: Dict[str, Any]) -> None:
@@ -227,13 +227,14 @@ class TestTorqueCalculation:
         message = get_last_message(mock_can)
         assert message.arbitration_id == 0x101  # Current mode
 
-        # Verify current was calculated (1.0 Nm motor-side / GEAR_RATIO / Kt_actual / GEAR_RATIO)
-        # For AK80-9: 1.0 / 9.0 / 0.115 / 9.0 = ~0.107 A
+        # Verify current was calculated correctly:
+        # Motor torque 1.0 Nm -> Output torque = 1.0 * 9.0 (GEAR_RATIO) = 9.0 Nm
+        # Current = Output torque / Kt_actual / GEAR_RATIO = 9.0 / 0.115 / 9.0 = ~8.696 A
         # Current is sent as int32(current * 1000)
         import struct
 
         current_int = struct.unpack(">i", bytes(message.data))[0]
-        expected_current = int((1.0 / 9.0 / 0.115 / 9.0) * 1000)
+        expected_current = int((9.0 / 0.115 / 9.0) * 1000)
         assert abs(current_int - expected_current) < 10  # Allow small rounding error
 
 
