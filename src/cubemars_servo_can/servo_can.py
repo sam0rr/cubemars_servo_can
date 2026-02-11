@@ -189,7 +189,7 @@ class motorListener(can.Listener):
 
         Args:
             canman: The CanManager object to get messages from
-            motor: The TMotorCANManager object to update
+            motor: The CubeMarsServoCAN object to update
         """
         self.canman = canman
         self.bus = canman.bus
@@ -223,22 +223,25 @@ class CAN_Manager_servo(object):
     Used to keep track of one instantation of the class to make a singleton object
     """
 
-    def __new__(cls):
+    def __new__(cls, channel="can0"):
         """
         Makes a singleton object to manage a socketcan_native CAN bus.
         """
         if not cls._instance:
             cls._instance = super(CAN_Manager_servo, cls).__new__(cls)
             print("Initializing CAN Manager")
+
+            # Save channel for later use
+            cls._instance.channel = channel
+
             # verify the CAN bus is currently down
-            os.system("sudo /sbin/ip link set can0 down")
+            os.system(f"sudo /sbin/ip link set {channel} down")
             # start the CAN bus back up
-            os.system("sudo /sbin/ip link set can0 up type can bitrate 1000000")
-            # # increase transmit buffer length
-            # os.system( 'sudo ifconfig can0 txqueuelen 1000')
+            os.system(f"sudo /sbin/ip link set {channel} up type can bitrate 1000000")
+
             # create a python-can bus object
             cls._instance.bus = can.interface.Bus(
-                channel="can0", bustype="socketcan"
+                channel=channel, bustype="socketcan"
             )  # bustype='socketcan_native')
             # create a python-can notifier object, which motors can later subscribe to
             cls._instance.notifier = can.Notifier(bus=cls._instance.bus, listeners=[])
@@ -246,7 +249,7 @@ class CAN_Manager_servo(object):
 
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, channel="can0"):
         """
         ALl initialization happens in __new__
         """
@@ -257,7 +260,8 @@ class CAN_Manager_servo(object):
         # shut down the CAN bus when the object is deleted
         # This may not ever get called, so keep a reference and explicitly delete if this is important.
         """
-        os.system("sudo /sbin/ip link set can0 down")
+        if hasattr(self, "channel"):
+            os.system(f"sudo /sbin/ip link set {self.channel} down")
 
     # subscribe a motor object to the CAN bus to be updated upon message reception
     def add_motor(self, motor):
@@ -265,7 +269,7 @@ class CAN_Manager_servo(object):
         Subscribe a motor object to the CAN bus to be updated upon message reception
 
         Args:
-            motor: The TMotorManager object to be subscribed to the notifier
+            motor: The CubeMarsServoCAN object to be subscribed to the notifier
         """
         self.notifier.add_listener(motorListener(self, motor))
 
@@ -636,6 +640,7 @@ class CubeMarsServoCAN:
         max_mosfett_temp=50,
         CSV_file=None,
         log_vars=LOG_VARIABLES,
+        can_channel="can0",
     ):
         """
         Sets up the motor manager. Note the device will not be powered on by this method! You must
@@ -656,6 +661,7 @@ class CubeMarsServoCAN:
                 - "motor_velocity"
                 - "motor_acceleration"
                 - "motor_torque"
+            can_channel: The CAN channel to use (default "can0")
         """
         self.type = motor_type
         self.ID = motor_ID
@@ -687,7 +693,7 @@ class CubeMarsServoCAN:
             "motor_temperature": self.get_temperature_celsius,
         }
 
-        self._canman = CAN_Manager_servo()
+        self._canman = CAN_Manager_servo(channel=can_channel)
         self._canman.add_motor(self)
 
     def __enter__(self):

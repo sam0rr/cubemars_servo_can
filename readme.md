@@ -74,12 +74,12 @@ uv sync
 ## Usage Example
 
 ```python
-from cubemars_servo_can import TMotorManager_servo_can
+from cubemars_servo_can import CubeMarsServoCAN
 import time
 
 # Initialize the motor (e.g., AK40-10 with CAN ID 1)
 # NOTE: Ensure your CAN interface (can0) is up before running
-with TMotorManager_servo_can(motor_type='AK40-10', motor_ID=1) as motor:
+with CubeMarsServoCAN(motor_type='AK40-10', motor_ID=1) as motor:
     print("Motor Connected!")
 
     # 1. Enter Control Mode
