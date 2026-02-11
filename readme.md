@@ -78,6 +78,28 @@ src/
 
 ---
 
+## Development
+
+To contribute to this library:
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/sam0rr/cubemars_servo_can.git
+    cd cubemars_servo_can
+    ```
+
+2.  **Install dependencies:**
+    ```bash
+    uv sync
+    ```
+
+3.  **Run linters and formatters:**
+    ```bash
+    uv run black . && uv run ruff check .
+    ```
+
+---
+
 ## Credits
 
 Based on the original work by the [neurobionics](https://github.com/neurobionics/TMotorCANControl) team.
