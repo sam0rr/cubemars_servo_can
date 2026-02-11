@@ -100,6 +100,16 @@ To contribute to this library:
     uv run black . && uv run ruff check .
     ```
 
+### Testing
+
+The library includes a comprehensive test suite. Tests mock the CAN interface and do not require physical hardware or `sudo` privileges.
+
+**Run all tests (it will tell you the coverage cause we set it in the pyproject.toml):**
+
+```bash
+uv run pytest -v
+```
+
 ---
 
 ## Credits

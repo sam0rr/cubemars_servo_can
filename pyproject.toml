@@ -24,4 +24,4 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--maxfail=1 --cov=cubemars_servo_can"
+addopts = "-v --maxfail=1 --cov=cubemars_servo_can"

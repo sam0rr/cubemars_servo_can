@@ -1,15 +1,14 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
+from cubemars_servo_can.can_manager import CAN_Manager_servo
 from cubemars_servo_can.constants import ControlMode
 
 
 @pytest.fixture
 def mock_can():
-    with (
-        patch("cubemars_servo_can.can_manager.can") as mock_can_lib,
-        patch("cubemars_servo_can.can_manager.os.system") as mock_system,
-    ):
+    """Fixture that mocks CAN bus interface."""
+    with patch("cubemars_servo_can.can_manager.can") as mock_can_lib:
         # Setup mock bus and notifier
         mock_bus = MagicMock()
         mock_notifier = MagicMock()
@@ -21,7 +20,6 @@ def mock_can():
             "can": mock_can_lib,
             "bus": mock_bus,
             "notifier": mock_notifier,
-            "system": mock_system,
         }
 
 
@@ -29,8 +27,6 @@ def test_initialization(mock_can):
     # Should not raise
     motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, can_channel="vcan0")
 
-    # Check if os.system was called to set up CAN
-    mock_can["system"].assert_called()
     # Check if bus was created
     mock_can["can"].interface.Bus.assert_called_with(
         channel="vcan0", bustype="socketcan"
@@ -67,13 +63,10 @@ def test_send_position_command(mock_can):
     motor.update()
 
     # Verify a message was sent
-    # We can inspect the last call to bus.send
     args, _ = mock_can["bus"].send.call_args
     message = args[0]
 
     assert message.arbitration_id is not None
-    # We are not checking the exact byte packing here (covered in utils test/integration)
-    # but ensuring the flow works.
 
 
 def test_safety_limits(mock_can):
@@ -81,8 +74,8 @@ def test_safety_limits(mock_can):
     motor._entered = True
     motor.enter_position_control()
 
-    # Try to set a huge angle beyond P_max
+    # Try to set a huge angle beyond P_max (32000)
+    # Note: set_motor_angle_radians divides by GEAR_RATIO (9.0) before checking limits
+    # So we need to pass an angle > 32000 * 9.0 = 288000 to trigger the limit
     with pytest.raises(RuntimeError, match="Cannot control using impedance mode"):
-        motor.set_motor_angle_radians(
-            1000.0
-        )  # 1000 rad is way > 32000/GearRatio (approx) depending on config
+        motor.set_motor_angle_radians(300000.0)
