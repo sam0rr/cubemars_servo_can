@@ -2,129 +2,81 @@
 
 A simplified, robust, and modern Python library for controlling CubeMars AK-series actuators (e.g., AK40-10) via CAN bus in Servo Mode.
 
-**This project is a streamlined fork/rewrite of the [TMotorCANControl](https://github.com/neurobionics/TMotorCANControl) library.**
+**This project is a streamlined, professional refactor of the [TMotorCANControl](https://github.com/neurobionics/TMotorCANControl) library.**
 
-## Why this exists?
+## Key Features
 
-The original `TMotorCANControl` library is goof but contains significant "bloat" for specific use cases:
+- **Pro-Grade Refactor:** Modular codebase with strict type hinting, linting, and solid architecture.
+- **Zero Bloat:** Stripped of MIT mode and Serial control code to focus 100% on reliable Servo CAN operation.
+- **Modern Packaging:** Built with `uv` and `pyproject.toml` for fast, reliable dependency management.
+- **Advanced Configuration:** Safe defaults for AK-series motors with the ability to safely override parameters or define custom motors.
 
-- It bundles MIT Mode, Servo Mode, and Serial control all together.
-- It includes extensive legacy demos, documentation files, and build artifacts.
-- It uses older packaging standards.
+## Documentation
 
-**`cubemars_servo_can`** strips away everything except the core **Servo Mode via CAN** functionality, offering:
+Comprehensive documentation is available in the `docs/` folder:
 
-- **Zero Bloat:** Just the code you need to control your motors.
-- **Modern Packaging:** Built with `uv` for fast, reliable dependency management.
-- **Robust Defaults:** Pre-configured with safety parameters for AK40-10 motors (15A software limit, correct pole pairs).
+- [**Getting Started**](docs/getting_started.md): Installation, hardware setup, and basic example.
+- [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
+- [**Control Modes**](docs/control_modes.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 
-## Installation & Integration
+## Quick Start
 
-### 1. Adding to your Project
-
-You can include this library in your own project's `pyproject.toml` or `requirements.txt`.
-
-#### Using uv (Recommended)
-
-If you are developing locally, add it as an editable dependency:
+### 1. Install
 
 ```bash
-# If the folder is next to your project
-uv add --editable ../cubemars_servo_can
+# Using pip
+pip install cubemars-servo-can
+
+# Or using uv (recommended)
+uv add cubemars-servo-can
 ```
 
-#### Using pip
+### 2. Run (Requires Sudo)
 
-```bash
-pip install -e /path/to/cubemars_servo_can
-```
-
-#### Manual `pyproject.toml`
-
-If you are managing dependencies manually, add it to your `dependencies` list:
-
-**For local development:**
-
-```toml
-[project]
-dependencies = [
-    "cubemars_servo_can @ file:///path/to/cubemars_servo_can",
-]
-```
-
-**For production (once pushed to git):**
-
-```toml
-[project]
-dependencies = [
-    "cubemars_servo_can @ git+https://github.com/YOUR_USERNAME/cubemars_servo_can.git",
-]
-```
-
-### 2. Standalone Setup
-
-If you just want to run this library on its own:
-
-```bash
-git clone <your-repo-url>
-cd cubemars_servo_can
-uv sync
-```
-
-## Requirements & Privileges
-
-**Important: Sudo Access is used**
-
-This library automatically manages the CAN interface state for convenience. To do this, it executes system commands (`ip link set ...`) which require `sudo` privileges.
-
-## Usage Example
+The library manages the CAN interface (bitrate/state), which requires root privileges.
 
 ```python
 from cubemars_servo_can import CubeMarsServoCAN
 import time
 
-# Initialize the motor (e.g., AK40-10 with CAN ID 1)
-# You can specify the CAN channel (default is 'can0')
-with CubeMarsServoCAN(motor_type='AK40-10', motor_ID=1, can_channel='can0') as motor:
+# Initialize with 'with' block for safe power-on/off
+with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as motor:
     print("Motor Connected!")
 
     # 1. Enter Control Mode
-    motor.enter_duty_cycle_control()
+    motor.enter_position_control()
     
-    # ... rest of your code
-```
-
-    # 2. Set Command (5% duty cycle)
-    motor.set_duty_cycle_percent(0.05)
-
-    # 3. Update Motor (Send command + Receive state)
+    # 2. Set Command (180 degrees)
+    motor.set_motor_angle_radians(3.14)
+    
+    # 3. Update (Send & Receive)
     motor.update()
-
-    # Print status
-    print(f"Position: {motor.position} rad")
-    print(f"Velocity: {motor.velocity} rad/s")
-    print(f"Current:  {motor.current_qaxis} A")
-
+    
+    print(f"Position: {motor.position:.2f} rad")
     time.sleep(1)
-
-    # The 'with' block automatically handles power-off and cleanup
 ```
 
-## Supported Motors
-
-Currently optimized for:
-
-- **AK40-10** (KV170) - _Defaults: 15A limit, 7 pole pairs_
-- _Inherited support for AK80-9 and AK10-9_
-
-## Development
-
-To run scripts or tests within the managed environment:
-
+Run it:
 ```bash
-uv run python your_script.py
+sudo python my_script.py
+```
+
+## Project Structure
+
+The library uses a modern `src-layout` for robustness:
+
+```
+src/
+└── cubemars_servo_can/
+    ├── __init__.py      # Package entry point
+    ├── servo_can.py     # Main high-level API (CubeMarsServoCAN)
+    ├── can_manager.py   # Low-level CAN bus logic
+    ├── motor_state.py   # Telemetry data structures
+    ├── config.py        # Motor configuration & parameters
+    ├── constants.py     # Protocol constants & Error codes
+    └── utils.py         # Byte manipulation helpers
 ```
 
 ## Credits
 
-Based on the work by the [neurobionics](https://github.com/neurobionics/TMotorCANControl) team.
+Based on the original work by the [neurobionics](https://github.com/neurobionics/TMotorCANControl) team.
