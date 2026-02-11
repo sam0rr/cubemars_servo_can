@@ -113,8 +113,8 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "P_max": 32000.0,  # 3200 deg
         "V_min": -60000.0,  # -60000 rpm electrical speed
         "V_max": 60000.0,  # 60000 rpm electrical speed
-        "Curr_min": -1500.0,  # -15A safe limit
-        "Curr_max": 1500.0,  # 15A safe limit
+        "Curr_min": -1500.0,  # -35A is the actual limit but set to -15A
+        "Curr_max": 1500.0,  # 35A is the actual limit but set to 15A
         "T_min": -19.6,  # NM
         "T_max": 19.6,  # NM
         "Kt_TMotor": 0.056,  # from TMotor website (actually 1/Kvll)
