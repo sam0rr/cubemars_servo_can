@@ -1,6 +1,3 @@
-from typing import Optional
-
-
 class ServoMotorState:
     """
     Data structure to store and update motor states.
