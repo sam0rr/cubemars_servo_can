@@ -16,14 +16,15 @@ A simplified, robust, and modern Python library for controlling CubeMars AK-seri
 **⚠️ You need a CAN link to use this library.**
 
 We highly recommend the **Waveshare RS485 CAN HAT** for Raspberry Pi.
-*   [Purchase & Wiki Instructions](https://www.waveshare.com/wiki/RS485_CAN_HAT)
 
-For motor wiring and power specifications, please **refer to your motor's official PDF manual**.
+- [Purchase & Wiki Instructions](https://www.waveshare.com/wiki/RS485_CAN_HAT)
+
+For motor wiring and power specifications, please **refer to the [official tutorial PDF](tutorial.pdf)** included in this repository.
 
 ## Documentation
 
+- [**Usage Guide**](docs/usage.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 - [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
-- [**Control Modes**](docs/control_modes.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 
 ## Quick Start
 
@@ -56,13 +57,13 @@ with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as mo
 
     # 1. Enter Control Mode
     motor.enter_position_control()
-    
+
     # 2. Set Command (180 degrees)
     motor.set_motor_angle_radians(3.14)
-    
+
     # 3. Update (Send & Receive)
     motor.update()
-    
+
     print(f"Position: {motor.position:.2f} rad")
     time.sleep(1)
 ```
