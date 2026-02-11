@@ -143,15 +143,17 @@ class CubeMarsServoCAN:
         dt = now - self._last_update_time
         self._last_update_time = now
 
-        # Avoid division by zero if updates are instant
+        # Calculate acceleration before updating state
         if abs(dt) > 1e-9:
-            self._motor_state_async.acceleration = (
+            acceleration = (
                 servo_state.velocity - self._motor_state_async.velocity
             ) / dt
         else:
-            self._motor_state_async.acceleration = 0.0
+            acceleration = 0.0
 
         self._motor_state_async.set_state_obj(servo_state)
+        # Preserve the calculated acceleration (don't overwrite with state object value)
+        self._motor_state_async.acceleration = acceleration
         self._updated = True
 
     def update(self) -> None:
@@ -546,7 +548,7 @@ class CubeMarsServoCAN:
     def check_can_connection(self) -> bool:
         """
         Checks the motor's connection by attempting to send 10 startup messages.
-        If it gets 10 replies, then the connection is confirmed.
+        If it gets responses, then the connection is confirmed.
 
         Returns:
             True if a connection is established and False otherwise.
@@ -557,10 +559,27 @@ class CubeMarsServoCAN:
             )
         listener = can.BufferedReader()
         self._canman.notifier.add_listener(listener)
-        for i in range(10):
-            self.power_on()
-            time.sleep(0.001)
-        return True
+        try:
+            for i in range(10):
+                self.power_on()
+                time.sleep(0.001)
+
+            # Wait for responses
+            time.sleep(0.05)
+
+            # Check if we got any messages from this motor
+            msg_count = 0
+            while True:
+                msg = listener.get_message(timeout=0.01)
+                if msg is None:
+                    break
+                # Check if message is from this motor
+                if (msg.arbitration_id & 0x00000FF) == self.ID:
+                    msg_count += 1
+
+            return msg_count > 0
+        finally:
+            self._canman.notifier.remove_listener(listener)
 
     # --- Properties ---
 

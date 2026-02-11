@@ -308,7 +308,7 @@ class CAN_Manager_servo(object):
         motor_pos = float(pos_int * 0.1)  # motor position
         motor_spd = float(spd_int * 10.0)  # motor speed
         motor_cur = float(cur_int * 0.01)  # motor current
-        motor_temp = float(np.int16(data[6]))  # motor temperature
+        motor_temp = float(np.uint8(data[6]))  # motor temperature (unsigned 8-bit)
         motor_error = int(data[7])  # motor error mode
 
         if self.debug:

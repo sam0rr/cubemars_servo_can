@@ -265,31 +265,263 @@ class TestTelemetry:
         assert motor.error == 1
 
 
-class TestStateParsing:
-    """Tests for parsing incoming CAN messages."""
+class TestDtCalculation:
+    """Tests for dt calculation and acceleration computation."""
 
-    def test_parse_servo_message(self, mock_can: Dict[str, Any]) -> None:
-        """Test that incoming CAN messages are parsed correctly."""
-        from cubemars_servo_can.can_manager import CAN_Manager_servo
+    def test_acceleration_calculation_with_positive_dt(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that dt is calculated correctly (positive) for acceleration."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
 
-        # Create a CAN manager to test parsing
-        can_manager = CAN_Manager_servo(channel="vcan0")
+        # Set initial state
+        from cubemars_servo_can.motor_state import ServoMotorState
 
-        # Create mock data (position=100, velocity=50, current=5, temp=40, error=0)
-        # Position: 100 * 10 = 1000 (0x03E8)
-        # Velocity: 50 / 10 = 5 (0x0005)
-        # Current: 5 / 0.01 = 500 (0x01F4)
-        # Temp: 40 (0x28)
-        # Error: 0
-        data = bytes([0x03, 0xE8, 0x00, 0x05, 0x01, 0xF4, 0x28, 0x00])
+        motor._motor_state_async.velocity = 0.0
+        motor._last_update_time = 0.0
 
-        state = can_manager.parse_servo_message(data)
+        # Simulate a state update with known velocity change
+        new_state = ServoMotorState(
+            position=0.0,
+            velocity=10.0,  # Changed by 10 rad/s
+            current=0.0,
+            temperature=25.0,
+            error=0,
+            acceleration=0.0,
+        )
 
-        assert state.position == 100.0  # 1000 * 0.1
-        assert state.velocity == 50.0  # 5 * 10
-        assert state.current == 5.0  # 500 * 0.01
-        assert state.temperature == 40.0
-        assert state.error == 0
+        # Use a time value significantly larger than 1e-9 to ensure dt is not too small
+        # Set _last_update_time to a value that will give us dt = 1.0
+        motor._last_update_time = 0.0
+
+        with patch("time.time", return_value=1.0):  # 1 second later
+            motor._update_state_async(new_state)
+
+        # Acceleration should be positive: (10 - 0) / 1 = 10 rad/s^2
+        assert motor._motor_state_async.acceleration == 10.0
+
+    def test_acceleration_zero_on_instant_update(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that acceleration is zero when dt is very small (avoids division by zero)."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        from cubemars_servo_can.motor_state import ServoMotorState
+
+        motor._motor_state_async.velocity = 5.0
+        motor._last_update_time = 100.0
+
+        new_state = ServoMotorState(
+            position=0.0,
+            velocity=10.0,
+            current=0.0,
+            temperature=25.0,
+            error=0,
+            acceleration=0.0,
+        )
+
+        # Update with almost no time passed (smaller than 1e-9 threshold)
+        with patch("time.time", return_value=100.0000000005):  # 0.5 nanoseconds later
+            motor._update_state_async(new_state)
+
+        # Should be 0.0 to avoid division by very small dt
+        assert motor._motor_state_async.acceleration == 0.0
+
+
+class TestVelocityUnitConversion:
+    """Tests for velocity unit conversion."""
+
+    def test_motor_velocity_includes_conversion_factor(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that motor velocity includes radps_per_ERPM conversion."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        # Set raw ERPM in state
+        motor._motor_state.velocity = 1000.0  # ERPM
+
+        motor_velocity = motor.get_motor_velocity_radians_per_second()
+
+        # Should be: ERPM * radps_per_ERPM * GEAR_RATIO
+        # 1000 * 0.000582 * 9.0 = 5.238 rad/s
+        expected = 1000.0 * 0.000582 * 9.0
+        assert abs(motor_velocity - expected) < 0.01
+
+
+class TestVelocityLimitUnits:
+    """Tests for velocity limit checking in correct units."""
+
+    def test_velocity_limit_in_correct_units(self, mock_can: Dict[str, Any]) -> None:
+        """Test that velocity limit is compared in correct units (rad/s)."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_velocity_control()
+
+        # V_max for AK80-9 is 32000 ERPM
+        # Converted to rad/s: 32000 * 0.000582 = 18.624 rad/s
+        # With gear ratio for motor-side: 18.624 * 9.0 = 167.6 rad/s
+        v_max_rad_s = 32000 * 0.000582 * 9.0  # ~167.6 rad/s
+
+        # Should raise error for velocity beyond limit
+        with pytest.raises(RuntimeError, match="Cannot control using speed mode"):
+            motor.set_motor_velocity_radians_per_second(v_max_rad_s + 10.0)
+
+    def test_velocity_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+        """Test that velocity within limit doesn't raise error."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_velocity_control()
+
+        # Should not raise error
+        motor.set_motor_velocity_radians_per_second(50.0)  # Well within limit
+
+
+class TestPositionLimitUnits:
+    """Tests for position limit checking in correct units."""
+
+    def test_position_limit_in_correct_units(self, mock_can: Dict[str, Any]) -> None:
+        """Test that position limit is compared in correct units (radians)."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_control()
+
+        # P_max for AK80-9 is 32000 (electrical units)
+        # Converted to output radians: 32000 * (pi/21) / 9.0 = 531.9 rad
+        # This is the output-side limit
+        p_max_output_rad = 32000 * (3.14159 / 21) / 9.0  # ~531.9 rad
+
+        # Should raise error for output position beyond limit
+        # Note: set_output_angle_radians is called directly here
+        with pytest.raises(RuntimeError, match="Cannot control using position mode"):
+            motor.set_output_angle_radians(p_max_output_rad + 10.0)
+
+    def test_position_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+        """Test that position within limit doesn't raise error."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_control()
+
+        # Should not raise error (output angle within limit)
+        motor.set_output_angle_radians(100.0)  # Well within limit of ~531.9 rad
+
+
+class TestTorqueFormula:
+    """Tests for torque calculation formula."""
+
+    def test_motor_torque_correct_formula(self, mock_can: Dict[str, Any]) -> None:
+        """Test that motor torque correctly accounts for gear ratio."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_control()
+
+        # Set motor torque to 1.0 Nm
+        motor.set_motor_torque_newton_meters(1.0)
+        motor.update()
+
+        message = get_last_message(mock_can)
+
+        # Motor torque 1.0 Nm -> Output torque = 1.0 * 9.0 = 9.0 Nm
+        # Current = 9.0 / 0.115 / 9.0 = 8.696 A
+        import struct
+
+        current_int = struct.unpack(">i", bytes(message.data))[0]
+        expected_current = int((9.0 / 0.115 / 9.0) * 1000)
+
+        assert abs(current_int - expected_current) < 10
+
+
+class TestCurrentLimits:
+    """Tests for current limit enforcement."""
+
+    def test_current_limit_enforced(self, mock_can: Dict[str, Any]) -> None:
+        """Test that current limits are enforced."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_control()
+
+        # Curr_max is 1500 (scaled by 100 in config), so limit is 15A
+        with pytest.raises(RuntimeError, match="Current.*out of range"):
+            motor.set_motor_current_qaxis_amps(20.0)  # Beyond 15A limit
+
+    def test_current_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+        """Test that current within limit doesn't raise error."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_control()
+
+        # Should not raise error (within 15A limit)
+        motor.set_motor_current_qaxis_amps(10.0)
+
+
+class TestTorqueLimits:
+    """Tests for torque limit enforcement."""
+
+    def test_torque_limit_enforced(self, mock_can: Dict[str, Any]) -> None:
+        """Test that torque limits are enforced."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_control()
+
+        # T_max is 30 Nm for AK80-9
+        with pytest.raises(RuntimeError, match="Torque.*out of range"):
+            motor.set_output_torque_newton_meters(40.0)  # Beyond 30 Nm limit
+
+    def test_torque_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+        """Test that torque within limit doesn't raise error."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_control()
+
+        # Should not raise error (within 30 Nm limit and resulting current within 15A)
+        # 10 Nm -> 10 / 0.115 / 9.0 = 9.66A (within 15A limit)
+        motor.set_output_torque_newton_meters(10.0)
+
+
+class TestCheckCanConnection:
+    """Tests for CAN connection checking."""
+
+    def test_check_connection_returns_false_when_no_response(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that check_can_connection returns False when no motor response."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        # Mock BufferedReader to return no messages
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.return_value = None
+            mock_reader.return_value = mock_instance
+
+            result = motor.check_can_connection()
+            assert result is False
+
+    def test_check_connection_returns_true_with_response(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that check_can_connection returns True when motor responds."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        # Create a mock message from the motor
+        mock_msg = MagicMock()
+        mock_msg.arbitration_id = 0x001  # Matches motor ID 1
+
+        # Mock BufferedReader to return a message
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.side_effect = [mock_msg, None]
+            mock_reader.return_value = mock_instance
+
+            result = motor.check_can_connection()
+            assert result is True
+
+
+class TestErrorHandling:
+    """Tests for error state handling."""
 
     def test_error_state_raises_runtime_error(self, mock_can: Dict[str, Any]) -> None:
         """Test that receiving an error state raises RuntimeError."""

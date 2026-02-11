@@ -46,7 +46,9 @@ def buffer_append_uint32(buffer: List[int], number: int) -> None:
 def buffer_append_int64(buffer: List[int], number: int) -> None:
     """Appends a 64-bit signed integer to the buffer."""
     if not -9223372036854775808 <= number <= 9223372036854775807:
-        raise ValueError(f"Value {number} out of int64 range")
+        raise ValueError(
+            f"Value {number} out of int64 range (-9223372036854775808 to 9223372036854775807)"
+        )
     buffer.append((number >> 56) & 0xFF)
     buffer.append((number >> 48) & 0xFF)
     buffer.append((number >> 40) & 0xFF)
@@ -60,7 +62,9 @@ def buffer_append_int64(buffer: List[int], number: int) -> None:
 def buffer_append_uint64(buffer: List[int], number: int) -> None:
     """Appends a 64-bit unsigned integer to the buffer."""
     if not 0 <= number <= 18446744073709551615:
-        raise ValueError(f"Value {number} out of uint64 range")
+        raise ValueError(
+            f"Value {number} out of uint64 range (0 to 18446744073709551615)"
+        )
     buffer.append((number >> 56) & 0xFF)
     buffer.append((number >> 48) & 0xFF)
     buffer.append((number >> 40) & 0xFF)
