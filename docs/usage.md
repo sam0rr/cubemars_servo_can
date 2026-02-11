@@ -17,6 +17,27 @@ from cubemars_servo_can.can_manager import CAN_Manager_servo
 CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
 ```
 
+This requires host permissions (`CAP_NET_ADMIN`). The library does not run `sudo` implicitly.
+
+### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
+
+Configure overlays in `/boot/firmware/config.txt`:
+
+```ini
+dtparam=spi=on
+dtoverlay=mcp2515-can0,oscillator=12000000,interrupt=25,spimaxfrequency=2000000
+```
+
+Then configure `can0` (example):
+
+```bash
+sudo ip link set can0 up type can bitrate 1000000
+sudo ifconfig can0 txqueuelen 65536
+sudo ifconfig can0 up
+```
+
+For non-sudo app runtime, preconfigure `can0` at boot or grant capabilities to networking tools.
+
 ```python
 from cubemars_servo_can import CubeMarsServoCAN
 import time
