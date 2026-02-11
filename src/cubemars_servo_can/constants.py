@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Dict, List
 
 
 class ControlMode(Enum):
@@ -16,7 +17,7 @@ class ControlMode(Enum):
     IDLE = 7
 
 
-CAN_PACKET_ID = {
+CAN_PACKET_ID: Dict[str, int] = {
     "SET_DUTY": 0,  # Motor runs in duty cycle mode
     "SET_CURRENT": 1,  # Motor runs in current loop mode
     "SET_CURRENT_BRAKE": 2,  # Motor current brake mode operation
@@ -26,7 +27,7 @@ CAN_PACKET_ID = {
     "SET_POS_SPD": 6,  # Position velocity loop mode
 }
 
-ERROR_CODES = {
+ERROR_CODES: Dict[int, str] = {
     0: "No Error",
     1: "Over temperature fault",
     2: "Over current fault",
@@ -37,7 +38,7 @@ ERROR_CODES = {
 }
 
 # Default variables to be logged
-DEFAULT_LOG_VARIABLES = [
+DEFAULT_LOG_VARIABLES: List[str] = [
     "motor_position",
     "motor_speed",
     "motor_current",
