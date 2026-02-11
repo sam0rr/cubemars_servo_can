@@ -726,7 +726,9 @@ class TestContextManagerAndUpdateBranches:
             motor_type="AK80-9", motor_ID=1, CSV_file=str(csv_path)
         )
         with patch.object(motor, "check_can_connection", return_value=False):
-            with patch.object(motor, "power_off", side_effect=RuntimeError("off failed")):
+            with patch.object(
+                motor, "power_off", side_effect=RuntimeError("off failed")
+            ):
                 with pytest.raises(RuntimeError, match="Device not connected"):
                     motor.__enter__()
 

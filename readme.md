@@ -29,10 +29,11 @@ For motor wiring and initial configuration (setting the servo mode and CAN ID) p
 ### Raspberry Pi + Waveshare RS485 CAN HAT
 
 Reference board:
+
 - https://www.waveshare.com/wiki/RS485_CAN_HAT
 
 1. Enable SPI and MCP2515 overlay in your boot config.
-For Raspberry Pi OS Bookworm this is usually `/boot/firmware/config.txt`:
+   For Raspberry Pi OS Trixie this is usually `/boot/firmware/config.txt`:
 
 ```ini
 dtparam=spi=on

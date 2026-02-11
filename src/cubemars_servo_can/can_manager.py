@@ -126,13 +126,25 @@ class CAN_Manager_servo(object):
         try:
             subprocess.run([ip_tool, "link", "set", channel, "down"], check=True)
             subprocess.run(
-                [ip_tool, "link", "set", channel, "up", "type", "can", "bitrate", str(bitrate)],
+                [
+                    ip_tool,
+                    "link",
+                    "set",
+                    channel,
+                    "up",
+                    "type",
+                    "can",
+                    "bitrate",
+                    str(bitrate),
+                ],
                 check=True,
             )
         except FileNotFoundError as e:
             raise RuntimeError(f"Cannot find ip tool at '{ip_tool}'") from e
         except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to configure socketcan interface '{channel}'") from e
+            raise RuntimeError(
+                f"Failed to configure socketcan interface '{channel}'"
+            ) from e
 
     def __del__(self) -> None:
         """
