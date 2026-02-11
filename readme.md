@@ -64,11 +64,11 @@ Use the usage guide for mode-by-mode examples:
 Update to the latest repository version:
 
 ```bash
-# If installed with pip:
-pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
-
 # If managed in a uv project dependency:
 uv add --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
+
+# If installed with pip:
+pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 ```
 
 ---
