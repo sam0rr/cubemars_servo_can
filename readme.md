@@ -122,7 +122,7 @@ The library includes a comprehensive test suite. Tests mock the CAN interface an
 **Run all tests (coverage is enabled by default in pyproject.toml):**
 
 ```bash
-uv run pytest -q
+uv run pytest
 ```
 
 ---

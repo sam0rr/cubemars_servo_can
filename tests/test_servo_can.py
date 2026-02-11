@@ -750,7 +750,9 @@ class TestContextManagerAndUpdateBranches:
         motor._last_command_time = 9.9
         motor._last_update_time = 9.0
         with patch("time.time", return_value=10.0):
-            with pytest.warns(RuntimeWarning, match="State update requested but no data"):
+            with pytest.warns(
+                RuntimeWarning, match="State update requested but no data"
+            ):
                 motor.update()
 
     def test_update_writes_csv_row(self, mock_can: Dict[str, Any], tmp_path) -> None:

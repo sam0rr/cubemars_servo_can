@@ -165,7 +165,9 @@ class TestMotorListener:
         listener.on_message_received(msg)
         motor._update_state_async.assert_called_once_with(state)
 
-    def test_listener_ignores_non_matching_motor(self, mock_can: Dict[str, Any]) -> None:
+    def test_listener_ignores_non_matching_motor(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         motor = MagicMock()
         motor.ID = 1
