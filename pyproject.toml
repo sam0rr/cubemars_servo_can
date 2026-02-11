@@ -1,6 +1,6 @@
 [project]
 name = "cubemars-servo-can"
-version = "0.2.0"
+version = "0.2.1"
 description = "A simplified, robust, and modern Python library for controlling CubeMars AK-series actuators (e.g., AK40-10) via CAN bus in Servo Mode."
 readme = "readme.md"
 authors = [
@@ -8,7 +8,6 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy>=1.24.0",
     "python-can>=4.3.0",
 ]
 [build-system]

@@ -1,11 +1,10 @@
 import can
+import math
 import time
 import csv
 import traceback
 import warnings
 from typing import List, Optional, Dict, Any, TextIO
-
-import numpy as np
 
 from .constants import ERROR_CODES, DEFAULT_LOG_VARIABLES, ControlMode
 from .config import get_motor_config, MotorConfig
@@ -59,7 +58,7 @@ class CubeMarsServoCAN:
         self._control_state = ControlMode.IDLE
 
         self.radps_per_ERPM: float = 5.82e-04
-        self.rad_per_Eang: float = np.pi / self.config.NUM_POLE_PAIRS
+        self.rad_per_Eang: float = math.pi / self.config.NUM_POLE_PAIRS
 
         self._entered = False
         self._start_time = time.time()
@@ -394,7 +393,7 @@ class CubeMarsServoCAN:
         # Convert P_max from electrical units to radians for comparison
         # P_max is in electrical degrees, convert to radians and account for gear ratio
         p_max_rad = self.config.P_max * self.rad_per_Eang / self.config.GEAR_RATIO
-        if np.abs(pos) >= p_max_rad:
+        if abs(pos) >= p_max_rad:
             raise RuntimeError(
                 f"Cannot control using position mode for angles with magnitude greater than {p_max_rad} rad!"
             )
@@ -403,7 +402,7 @@ class CubeMarsServoCAN:
 
         if self._control_state == ControlMode.POSITION_VELOCITY:
             v_max_rad_s = self.config.V_max * self.radps_per_ERPM
-            if np.abs(vel) >= v_max_rad_s:
+            if abs(vel) >= v_max_rad_s:
                 raise RuntimeError(
                     f"Cannot use position-velocity mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
                 )
@@ -442,7 +441,7 @@ class CubeMarsServoCAN:
                 f"Attempted to send duty cycle command without gains for device {self.device_info_string()}"
             )
         else:
-            if np.abs(duty) > 1:
+            if abs(duty) > 1:
                 raise RuntimeError(
                     "Cannot control using duty cycle mode for duty cycles greater than 100%!"
                 )
@@ -459,7 +458,7 @@ class CubeMarsServoCAN:
         """
         # Convert V_max from ERPM to rad/s for comparison
         v_max_rad_s = self.config.V_max * self.radps_per_ERPM
-        if np.abs(vel) >= v_max_rad_s:
+        if abs(vel) >= v_max_rad_s:
             raise RuntimeError(
                 f"Cannot control using speed mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
             )

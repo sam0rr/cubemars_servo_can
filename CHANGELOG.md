@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.1 - 2026-02-11
+
+### Fixed
+
+- Replaced fragile signed-int parsing in CAN status frame decode with deterministic `struct.unpack` handling.
+- Prevented listener-thread parser exceptions from killing the notifier thread; errors are now surfaced on user `update()` calls.
+
+### Dependencies
+
+- Removed runtime `numpy` dependency.
+- Replaced `np.pi` and `np.abs` usage with `math.pi` and built-in `abs`.
+
+### Validation
+
+- Test suite: `106 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*`
+- Lint: `ruff` clean
+
 ## 0.2.0 - 2026-02-11
 
 ### Breaking Changes
