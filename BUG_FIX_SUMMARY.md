@@ -13,6 +13,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run ruff check src tests
 ```
 
 Current validation result:
+
 - `93 passed`
 - Source coverage: `100%` (`472/472` statements)
 - `ruff`: clean

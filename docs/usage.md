@@ -37,14 +37,14 @@ sudo uv run your_script.py
 
 You must explicitly enter a control mode before sending commands for that mode.
 
-| Mode API | Sent CAN Command |
-| --- | --- |
-| `enter_duty_cycle_control()` | `SET_DUTY` |
-| `enter_current_control()` | `SET_CURRENT` |
-| `enter_current_brake_control()` | `SET_CURRENT_BRAKE` |
-| `enter_velocity_control()` | `SET_RPM` |
-| `enter_position_control()` | `SET_POS` |
-| `enter_position_velocity_control()` | `SET_POS_SPD` |
+| Mode API                            | Sent CAN Command    |
+| ----------------------------------- | ------------------- |
+| `enter_duty_cycle_control()`        | `SET_DUTY`          |
+| `enter_current_control()`           | `SET_CURRENT`       |
+| `enter_current_brake_control()`     | `SET_CURRENT_BRAKE` |
+| `enter_velocity_control()`          | `SET_RPM`           |
+| `enter_position_control()`          | `SET_POS`           |
+| `enter_position_velocity_control()` | `SET_POS_SPD`       |
 
 ### 1. Position Mode (Most Common)
 

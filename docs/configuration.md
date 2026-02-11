@@ -71,7 +71,7 @@ with CubeMarsServoCAN(motor_type='Custom', config_overrides=custom_motor_specs) 
 | ---------------- | ------- | -------------------------------------------------------------------------- |
 | `P_min/max`      | `float` | Position limits. (Original library uses int32 mapping ~32000 to ~3200 deg) |
 | `V_min/max`      | `float` | Velocity limits in Electrical RPM.                                         |
-| `Curr_min/max`   | `float` | Current limits in centi-amps (e.g. `1500` = `15.0A`).                     |
+| `Curr_min/max`   | `float` | Current limits in centi-amps (e.g. `1500` = `15.0A`).                      |
 | `T_min/max`      | `float` | Torque limits in Nm.                                                       |
 | `Kt_TMotor`      | `float` | Torque constant from spec sheet.                                           |
 | `Kt_actual`      | `float` | Calibrated torque constant.                                                |
