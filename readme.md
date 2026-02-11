@@ -26,6 +26,15 @@ We highly recommend the **Waveshare RS485 CAN HAT** for Raspberry Pi.
 
 For motor wiring and initial configuration (setting the servo mode and CAN ID) please **refer to the [official tutorial PDF](tutorial.pdf)** included in this repository.
 
+If desired, you can configure socketcan explicitly in code before creating motors:
+
+```python
+from cubemars_servo_can.can_manager import CAN_Manager_servo
+CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
+```
+
+This requires appropriate host permissions. The library no longer shells out with `sudo` implicitly.
+
 ---
 
 ## Quick Start

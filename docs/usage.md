@@ -8,6 +8,15 @@ This guide covers how to initialize the motor and use the various control modes 
 
 The library uses a context manager (`with` block) to safely handle the connection, power-on sequence, and shutdown.
 
+If you want the library to configure `socketcan` for you, call:
+
+```python
+from cubemars_servo_can.can_manager import CAN_Manager_servo
+
+# Requires sufficient privileges on your host.
+CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
+```
+
 ```python
 from cubemars_servo_can import CubeMarsServoCAN
 import time
@@ -28,7 +37,7 @@ with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as mo
 **Run it:**
 
 ```bash
-sudo uv run your_script.py
+uv run your_script.py
 ```
 
 ---
@@ -133,6 +142,7 @@ motor.set_zero_position()
 - Position-velocity mode validates target velocity and acceleration before frame packing.
 - Current brake mode rejects negative current values.
 - `update()` raises if temperature exceeds configured max.
+- Motor faults reported from CAN listener are raised on the next `update()` call.
 - `with CubeMarsServoCAN(...)` performs connection validation on entry.
 
 ## Telemetry (Reading State)

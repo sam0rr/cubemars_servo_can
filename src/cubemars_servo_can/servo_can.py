@@ -67,6 +67,7 @@ class CubeMarsServoCAN:
         self._last_command_time: Optional[float] = None
         self._updated = False
         self._command_sent = False
+        self._async_error: Optional[RuntimeError] = None
 
         self.log_vars = log_vars
         self.LOG_FUNCTIONS = {
@@ -85,29 +86,46 @@ class CubeMarsServoCAN:
         Used to safely power the motor on and begin the log file.
         """
         print(f"Turning on control for device: {self.device_info_string()}")
-        if self.csv_file_name is not None:
-            with open(self.csv_file_name, "w") as fd:
-                writer = csv.writer(fd)
-                writer.writerow(["pi_time"] + self.log_vars)
-            self.csv_file = open(self.csv_file_name, "a")
-            self.csv_writer = csv.writer(self.csv_file)
+        try:
+            if self.csv_file_name is not None:
+                with open(self.csv_file_name, "w") as fd:
+                    writer = csv.writer(fd)
+                    writer.writerow(["pi_time"] + self.log_vars)
+                self.csv_file = open(self.csv_file_name, "a")
+                self.csv_writer = csv.writer(self.csv_file)
 
-        self.power_on()
-        self._send_command()
-        self._entered = True
-        if not self.check_can_connection():
-            raise RuntimeError(f"Device not connected: {self.device_info_string()}")
-        return self
+            self.power_on()
+            self._send_command()
+            self._entered = True
+            if not self.check_can_connection():
+                raise RuntimeError(f"Device not connected: {self.device_info_string()}")
+            return self
+        except Exception:
+            # Best-effort rollback to avoid leaving the motor powered when entry fails.
+            if self._entered:
+                try:
+                    self.power_off()
+                except Exception:
+                    pass
+            self._entered = False
+            if self.csv_file is not None:
+                self.csv_file.close()
+                self.csv_file = None
+            raise
 
     def __exit__(self, etype, value, tb) -> None:
         """
         Used to safely power the motor off and close the log file.
         """
         print(f"Turning off control for device: {self.device_info_string()}")
-        self.power_off()
-
-        if self.csv_file is not None:
-            self.csv_file.close()
+        try:
+            self.power_off()
+        finally:
+            self._entered = False
+            self._async_error = None
+            if self.csv_file is not None:
+                self.csv_file.close()
+                self.csv_file = None
 
         if etype is not None:
             traceback.print_exception(etype, value, tb)
@@ -135,9 +153,11 @@ class CubeMarsServoCAN:
         """
         if servo_state.error != 0:
             error_msg = ERROR_CODES.get(servo_state.error, "Unknown Error")
-            raise RuntimeError(
+            self._async_error = RuntimeError(
                 f"Driver board error for device: {self.device_info_string()}: {error_msg}"
             )
+            self._updated = True
+            return
 
         now = time.time()
         dt = now - self._last_update_time
@@ -165,6 +185,11 @@ class CubeMarsServoCAN:
             raise RuntimeError(
                 f"Tried to update motor state before safely powering on for device: {self.device_info_string()}"
             )
+
+        if self._async_error is not None:
+            async_error = self._async_error
+            self._async_error = None
+            raise async_error
 
         if self.get_temperature_celsius() > self.max_temp:
             raise RuntimeError(
@@ -580,7 +605,8 @@ class CubeMarsServoCAN:
         listener = can.BufferedReader()
         self._canman.notifier.add_listener(listener)
         try:
-            for i in range(10):
+            start_time = time.time()
+            for i in range(3):
                 self.power_on()
                 time.sleep(0.001)
 
@@ -593,6 +619,12 @@ class CubeMarsServoCAN:
                 msg = listener.get_message(timeout=0.01)
                 if msg is None:
                     break
+                msg_timestamp = getattr(msg, "timestamp", None)
+                if (
+                    isinstance(msg_timestamp, (int, float))
+                    and msg_timestamp < start_time
+                ):
+                    continue
                 # Check if message is from this motor
                 if (msg.arbitration_id & 0x00000FF) == self.ID:
                     msg_count += 1

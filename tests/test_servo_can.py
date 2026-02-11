@@ -667,9 +667,12 @@ class TestCheckCanConnection:
 class TestErrorHandling:
     """Tests for error state handling."""
 
-    def test_error_state_raises_runtime_error(self, mock_can: Dict[str, Any]) -> None:
-        """Test that receiving an error state raises RuntimeError."""
+    def test_error_state_raised_on_update_thread(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Error frames are captured async and raised when user calls update()."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
 
         # Create a mock state with an error
         from cubemars_servo_can.motor_state import ServoMotorState
@@ -683,8 +686,9 @@ class TestErrorHandling:
             acceleration=0.0,  # Error 1 = Over temperature
         )
 
+        motor._update_state_async(error_state)
         with pytest.raises(RuntimeError, match="Over temperature fault"):
-            motor._update_state_async(error_state)
+            motor.update()
 
 
 class TestContextManagerAndUpdateBranches:
@@ -712,6 +716,22 @@ class TestContextManagerAndUpdateBranches:
         with patch.object(motor, "check_can_connection", return_value=False):
             with pytest.raises(RuntimeError, match="Device not connected"):
                 motor.__enter__()
+        assert motor._entered is False
+
+    def test_enter_failure_closes_csv_and_swallows_power_off_failure(
+        self, mock_can: Dict[str, Any], tmp_path
+    ) -> None:
+        csv_path = tmp_path / "motor_log.csv"
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(
+            motor_type="AK80-9", motor_ID=1, CSV_file=str(csv_path)
+        )
+        with patch.object(motor, "check_can_connection", return_value=False):
+            with patch.object(motor, "power_off", side_effect=RuntimeError("off failed")):
+                with pytest.raises(RuntimeError, match="Device not connected"):
+                    motor.__enter__()
+
+        assert motor._entered is False
+        assert motor.csv_file is None
 
     def test_exit_closes_csv_and_prints_traceback(
         self, mock_can: Dict[str, Any], tmp_path
@@ -727,8 +747,8 @@ class TestContextManagerAndUpdateBranches:
         with patch("cubemars_servo_can.servo_can.traceback.print_exception") as pe:
             motor.__exit__(RuntimeError, err, None)
             pe.assert_called_once()
-        assert motor.csv_file is not None
-        assert motor.csv_file.closed
+        assert motor.csv_file is None
+        assert motor._entered is False
 
     def test_update_raises_when_not_entered(self, mock_can: Dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -864,3 +884,21 @@ class TestMiscServoBranches:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         with pytest.raises(RuntimeError, match="before entering motor control"):
             motor.check_can_connection()
+
+    def test_check_can_connection_ignores_stale_timestamped_messages(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        stale_msg = MagicMock()
+        stale_msg.arbitration_id = 0x001
+        stale_msg.timestamp = 1.0
+
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.side_effect = [stale_msg, None]
+            mock_reader.return_value = mock_instance
+
+            with patch("time.time", return_value=10.0):
+                assert motor.check_can_connection() is False

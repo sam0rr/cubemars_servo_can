@@ -14,8 +14,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv run ruff check src tests
 
 Current validation result:
 
-- `93 passed`
-- Source coverage: `100%` (`472/472` statements)
+- `102 passed`
+- Source coverage: `100%` (`532/532` statements)
 - `ruff`: clean
 
 ## Verified Bug Register (Sequential IDs)
@@ -126,6 +126,30 @@ Status legend:
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Tests: `TestCurrentBrakeMode`
+
+18. `BUG-018` Runtime constructor/destructor performed implicit privileged host shell calls.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Tests: `TestSocketCanConfiguration`
+
+19. `BUG-019` CAN manager lacked deterministic shutdown path.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Tests: `TestListenerRegistrationLifecycle`
+
+20. `BUG-020` Listener-thread motor faults raised off-thread instead of on control loop thread.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `TestErrorHandling`
+
+21. `BUG-021` `__enter__` rollback path could leak state/resources on failure.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `TestContextManagerAndUpdateBranches`
 
 ## Corrected Prior Inaccurate Claim
 

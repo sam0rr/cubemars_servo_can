@@ -1,6 +1,7 @@
 """Tests for CAN manager functionality."""
 
 import pytest
+import subprocess
 from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
 from cubemars_servo_can.can_manager import CAN_Manager_servo, MotorListener
@@ -146,6 +147,11 @@ class TestSingletonBehavior:
         with pytest.raises(RuntimeError, match="already initialized"):
             CAN_Manager_servo(channel="can0")
 
+    def test_auto_configure_path_calls_helper(self, mock_can: Dict[str, Any]) -> None:
+        with patch.object(CAN_Manager_servo, "configure_socketcan") as configure:
+            CAN_Manager_servo(channel="vcan0", auto_configure=True, bitrate=500000)
+            configure.assert_called_once_with(channel="vcan0", bitrate=500000)
+
 
 class TestMotorListener:
     """Tests for listener message dispatch."""
@@ -234,3 +240,68 @@ class TestOriginCommand:
         message = mock_can["bus"].send.call_args[0][0]
         assert message.arbitration_id == 0x501
         assert message.data == [2]
+
+
+class TestSocketCanConfiguration:
+    """Tests for explicit socketcan configuration helper."""
+
+    def test_configure_socketcan_success(self, mock_can: Dict[str, Any]) -> None:
+        with patch("cubemars_servo_can.can_manager.subprocess.run") as run:
+            CAN_Manager_servo.configure_socketcan(channel="can1", bitrate=250000)
+            assert run.call_count == 2
+            first_call = run.call_args_list[0][0][0]
+            second_call = run.call_args_list[1][0][0]
+            assert first_call == ["/sbin/ip", "link", "set", "can1", "down"]
+            assert second_call == [
+                "/sbin/ip",
+                "link",
+                "set",
+                "can1",
+                "up",
+                "type",
+                "can",
+                "bitrate",
+                "250000",
+            ]
+
+    def test_configure_socketcan_missing_ip_tool_raises(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        with patch(
+            "cubemars_servo_can.can_manager.subprocess.run",
+            side_effect=FileNotFoundError("missing"),
+        ):
+            with pytest.raises(RuntimeError, match="Cannot find ip tool"):
+                CAN_Manager_servo.configure_socketcan(channel="can0")
+
+    def test_configure_socketcan_called_process_error_raises(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        err = subprocess.CalledProcessError(returncode=1, cmd=["ip"])
+        with patch("cubemars_servo_can.can_manager.subprocess.run", side_effect=err):
+            with pytest.raises(RuntimeError, match="Failed to configure socketcan"):
+                CAN_Manager_servo.configure_socketcan(channel="can0")
+
+
+class TestListenerRegistrationLifecycle:
+    """Tests for listener add/remove and close behavior."""
+
+    def test_remove_motor_unregisters_listener(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        motor = MagicMock()
+        listener = can_manager.add_motor(motor)
+
+        can_manager.remove_motor(motor)
+        mock_can["notifier"].remove_listener.assert_called_once_with(listener)
+
+    def test_close_stops_notifier_and_bus(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.close()
+        mock_can["notifier"].stop.assert_called_once()
+        mock_can["bus"].shutdown.assert_called_once()
+
+    def test_del_swallows_close_errors(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        with patch.object(can_manager, "close", side_effect=RuntimeError("close boom")):
+            # Should not raise
+            can_manager.__del__()

@@ -1,7 +1,7 @@
 import can
-import os
+import subprocess
 import numpy as np
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING, Dict
 
 from .constants import CAN_PACKET_ID
 from .motor_state import ServoMotorState
@@ -61,13 +61,22 @@ class CAN_Manager_servo(object):
     channel: str
     bus: can.interface.Bus
     notifier: can.Notifier
+    _listeners: Dict[int, MotorListener]
+    _closed: bool
 
-    def __new__(cls, channel: str = "can0") -> "CAN_Manager_servo":
+    def __new__(
+        cls,
+        channel: str = "can0",
+        auto_configure: bool = False,
+        bitrate: int = 1000000,
+    ) -> "CAN_Manager_servo":
         """
         Makes a singleton object to manage a socketcan_native CAN bus.
 
         Args:
             channel: The CAN channel name (e.g. 'can0', 'vcan0')
+            auto_configure: Whether to run socketcan setup commands before opening the bus.
+            bitrate: Bitrate used when auto-configuring socketcan.
         """
         if cls._instance is None:
             cls._instance = super(CAN_Manager_servo, cls).__new__(cls)
@@ -76,16 +85,15 @@ class CAN_Manager_servo(object):
             # Save channel for later use
             cls._instance.channel = channel
 
-            # Verify the CAN bus is currently down
-            # Note: Requires sudo privileges
-            os.system(f"sudo /sbin/ip link set {channel} down")
-            # Start the CAN bus back up with high bitrate
-            os.system(f"sudo /sbin/ip link set {channel} up type can bitrate 1000000")
+            if auto_configure:
+                cls.configure_socketcan(channel=channel, bitrate=bitrate)
 
             # Create a python-can bus object
             cls._instance.bus = can.interface.Bus(channel=channel, bustype="socketcan")
             # Create a python-can notifier object, which motors can later subscribe to
             cls._instance.notifier = can.Notifier(bus=cls._instance.bus, listeners=[])
+            cls._instance._listeners = {}
+            cls._instance._closed = False
             print("Connected on: " + str(cls._instance.bus))
 
         elif channel != cls._instance.channel:
@@ -95,27 +103,84 @@ class CAN_Manager_servo(object):
 
         return cls._instance
 
-    def __init__(self, channel: str = "can0") -> None:
+    def __init__(
+        self,
+        channel: str = "can0",
+        auto_configure: bool = False,
+        bitrate: int = 1000000,
+    ) -> None:
         """
         All initialization happens in __new__
         """
         pass
 
+    @staticmethod
+    def configure_socketcan(
+        channel: str = "can0", bitrate: int = 1000000, ip_tool: str = "/sbin/ip"
+    ) -> None:
+        """
+        Configure a socketcan interface.
+
+        This helper does not use sudo. Callers should run it with appropriate privileges.
+        """
+        try:
+            subprocess.run([ip_tool, "link", "set", channel, "down"], check=True)
+            subprocess.run(
+                [ip_tool, "link", "set", channel, "up", "type", "can", "bitrate", str(bitrate)],
+                check=True,
+            )
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Cannot find ip tool at '{ip_tool}'") from e
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to configure socketcan interface '{channel}'") from e
+
     def __del__(self) -> None:
         """
-        Shut down the CAN bus when the object is deleted.
+        Attempt to shut down resources when the object is deleted.
         """
-        if hasattr(self, "channel"):
-            os.system(f"sudo /sbin/ip link set {self.channel} down")
+        try:
+            self.close()
+        except Exception:
+            # Never raise during GC.
+            pass
 
-    def add_motor(self, motor: "CubeMarsServoCAN") -> None:
+    def close(self) -> None:
+        """
+        Stop notifier and shut down the CAN bus deterministically.
+        """
+        if not hasattr(self, "_closed") or self._closed:
+            return
+
+        if hasattr(self, "notifier"):
+            self.notifier.stop()
+        if hasattr(self, "bus"):
+            self.bus.shutdown()
+
+        self._listeners.clear()
+        self._closed = True
+
+        if CAN_Manager_servo._instance is self:
+            CAN_Manager_servo._instance = None
+
+    def add_motor(self, motor: "CubeMarsServoCAN") -> MotorListener:
         """
         Subscribe a motor object to the CAN bus to be updated upon message reception.
 
         Args:
             motor: The CubeMarsServoCAN object to be subscribed to the notifier
         """
-        self.notifier.add_listener(MotorListener(self, motor))
+        listener = MotorListener(self, motor)
+        self.notifier.add_listener(listener)
+        self._listeners[id(motor)] = listener
+        return listener
+
+    def remove_motor(self, motor: "CubeMarsServoCAN") -> None:
+        """
+        Remove a previously registered motor listener from the notifier.
+        """
+        listener = self._listeners.pop(id(motor), None)
+        if listener is not None:
+            self.notifier.remove_listener(listener)
 
     def send_servo_message(self, motor_id: int, data: List[int], data_len: int) -> None:
         """
