@@ -73,17 +73,9 @@ uv sync
 
 ## Requirements & Privileges
 
-**⚠️ Important: Sudo Access Required**
+**Important: Sudo Access is used**
 
 This library automatically manages the CAN interface state for convenience. To do this, it executes system commands (`ip link set ...`) which require `sudo` privileges.
-
-**You must run your Python script with `sudo`:**
-
-```bash
-sudo uv run python your_script.py
-# or
-sudo python your_script.py
-```
 
 ## Usage Example
 
