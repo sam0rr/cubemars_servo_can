@@ -83,12 +83,14 @@ src/
 To contribute to this library:
 
 1.  **Clone the repository:**
+
     ```bash
     git clone https://github.com/sam0rr/cubemars_servo_can.git
     cd cubemars_servo_can
     ```
 
 2.  **Install dependencies:**
+
     ```bash
     uv sync
     ```
