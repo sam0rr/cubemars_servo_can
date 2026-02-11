@@ -107,6 +107,8 @@ class CAN_Manager_servo(object):
                     cls._instance.bus.shutdown()
                 except Exception:
                     pass
+                # Mark closed so __del__/close doesn't attempt a duplicate shutdown.
+                cls._instance._closed = True
                 cls._instance = None
                 raise RuntimeError(
                     f"Failed to start CAN listener on interface '{channel}'."
@@ -146,15 +148,15 @@ class CAN_Manager_servo(object):
         """
         Stop notifier and shut down the CAN bus deterministically.
         """
-        if not hasattr(self, "_closed") or self._closed:
-            return
+        already_closed = getattr(self, "_closed", False)
 
-        if hasattr(self, "notifier"):
+        if not already_closed and hasattr(self, "notifier"):
             try:
                 self.notifier.stop()
             except Exception:
                 pass
-        if hasattr(self, "bus"):
+
+        if not already_closed and hasattr(self, "bus"):
             try:
                 self.bus.shutdown()
             except Exception:
@@ -162,8 +164,8 @@ class CAN_Manager_servo(object):
 
         if hasattr(self, "_listeners"):
             self._listeners.clear()
-        self._closed = True
 
+        self._closed = True
         if CAN_Manager_servo._instance is self:
             CAN_Manager_servo._instance = None
 
