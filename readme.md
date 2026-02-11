@@ -11,11 +11,17 @@ A simplified, robust, and modern Python library for controlling CubeMars AK-seri
 - **Modern Packaging:** Built with `uv` and `pyproject.toml` for fast, reliable dependency management.
 - **Advanced Configuration:** Safe defaults for AK-series motors with the ability to safely override parameters or define custom motors.
 
+## Hardware Setup
+
+**⚠️ You need a CAN link to use this library.**
+
+We highly recommend the **Waveshare RS485 CAN HAT** for Raspberry Pi.
+*   [Purchase & Wiki Instructions](https://www.waveshare.com/wiki/RS485_CAN_HAT)
+
+For motor wiring and power specifications, please **refer to your motor's official PDF manual**.
+
 ## Documentation
 
-Comprehensive documentation is available in the `docs/` folder:
-
-- [**Getting Started**](docs/getting_started.md): Installation, hardware setup, and basic example.
 - [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
 - [**Control Modes**](docs/control_modes.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 
@@ -23,23 +29,28 @@ Comprehensive documentation is available in the `docs/` folder:
 
 ### 1. Install
 
-```bash
-# Using pip
-pip install cubemars-servo-can
+Install directly from the repository using `uv` (recommended) or `pip`:
 
-# Or using uv (recommended)
-uv add cubemars-servo-can
+```bash
+# Using uv (Recommended)
+uv add git+https://github.com/sam0rr/cubemars_servo_can.git
+
+# Using pip
+pip install git+https://github.com/sam0rr/cubemars_servo_can.git
 ```
 
 ### 2. Run (Requires Sudo)
 
-The library manages the CAN interface (bitrate/state), which requires root privileges.
+The library automatically manages the CAN interface (bringing `can0` up/down), which requires root privileges.
+
+**Create a script (`main.py`):**
 
 ```python
 from cubemars_servo_can import CubeMarsServoCAN
 import time
 
 # Initialize with 'with' block for safe power-on/off
+# Ensure your CAN channel matches your hardware (default 'can0')
 with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as motor:
     print("Motor Connected!")
 
@@ -56,9 +67,10 @@ with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as mo
     time.sleep(1)
 ```
 
-Run it:
+**Run it:**
+
 ```bash
-sudo python my_script.py
+sudo uv run main.py
 ```
 
 ## Project Structure
