@@ -55,7 +55,6 @@ pip install git+https://github.com/sam0rr/cubemars_servo_can.git
 Use the usage guide for mode-by-mode examples:
 
 - [**Usage Guide**](docs/usage.md)
-- `can0` is the default channel. Pass `can_channel='can1'` only if your interface differs.
 
 ---
 
