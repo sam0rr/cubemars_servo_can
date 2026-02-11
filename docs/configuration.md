@@ -1,5 +1,7 @@
 # Motor Configuration
 
+---
+
 ## Default Configurations
 
 The library comes with built-in support for popular CubeMars motors:
@@ -15,6 +17,8 @@ with CubeMarsServoCAN(motor_type='AK10-9', motor_ID=1) as motor:
     # Motor is loaded with AK10-9 specs (V_max=100k, Kt=0.16)
     pass
 ```
+
+---
 
 ## Overriding Parameters
 
@@ -57,15 +61,19 @@ with CubeMarsServoCAN(motor_type='Custom', config_overrides=custom_motor_specs) 
     pass
 ```
 
+---
+
 ## Configuration Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `P_min/max` | `float` | Position limits. (Original library uses int32 mapping ~32000 to ~3200 deg) |
-| `V_min/max` | `float` | Velocity limits in Electrical RPM. |
-| `Curr_min/max` | `float` | Current limits in Amps. |
-| `T_min/max` | `float` | Torque limits in Nm. |
-| `Kt_TMotor` | `float` | Torque constant from spec sheet. |
-| `Kt_actual` | `float` | Calibrated torque constant. |
-| `GEAR_RATIO` | `float` | Reduction ratio. |
-| `NUM_POLE_PAIRS` | `int` | Number of pole pairs. |
+| Field            | Type    | Description                                                                |
+| ---------------- | ------- | -------------------------------------------------------------------------- |
+| `P_min/max`      | `float` | Position limits. (Original library uses int32 mapping ~32000 to ~3200 deg) |
+| `V_min/max`      | `float` | Velocity limits in Electrical RPM.                                         |
+| `Curr_min/max`   | `float` | Current limits in Amps.                                                    |
+| `T_min/max`      | `float` | Torque limits in Nm.                                                       |
+| `Kt_TMotor`      | `float` | Torque constant from spec sheet.                                           |
+| `Kt_actual`      | `float` | Calibrated torque constant.                                                |
+| `GEAR_RATIO`     | `float` | Reduction ratio.                                                           |
+| `NUM_POLE_PAIRS` | `int`   | Number of pole pairs.                                                      |
+
+---
