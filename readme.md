@@ -30,7 +30,7 @@ For motor wiring and initial configuration (setting the servo mode and CAN ID) p
 
 Keep hardware bring-up details in one place:
 
-- Full Raspberry/Waveshare setup, interface bring-up, and non-`sudo` runtime patterns: [Usage Guide](docs/usage.md#basic-initialization)
+- Full Raspberry/Waveshare setup and single recommended runtime flow (boot-time interface bring-up for `can0`, `can1`, etc.): [Usage Guide](docs/usage.md#basic-initialization)
 
 ---
 
@@ -55,6 +55,7 @@ pip install git+https://github.com/sam0rr/cubemars_servo_can.git
 Use the usage guide for mode-by-mode examples:
 
 - [**Usage Guide**](docs/usage.md)
+- `can0` is the default channel. Pass `can_channel='can1'` only if your interface differs.
 
 ---
 

@@ -1,7 +1,6 @@
 """Tests for CAN manager functionality."""
 
 import pytest
-import subprocess
 from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
 from cubemars_servo_can.can_manager import CAN_Manager_servo, MotorListener
@@ -147,10 +146,15 @@ class TestSingletonBehavior:
         with pytest.raises(RuntimeError, match="already initialized"):
             CAN_Manager_servo(channel="can0")
 
-    def test_auto_configure_path_calls_helper(self, mock_can: Dict[str, Any]) -> None:
-        with patch.object(CAN_Manager_servo, "configure_socketcan") as configure:
-            CAN_Manager_servo(channel="vcan0", auto_configure=True, bitrate=500000)
-            configure.assert_called_once_with(channel="vcan0", bitrate=500000)
+    def test_interface_open_failure_raises_runtime_error(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        mock_can["can"].interface.Bus.side_effect = OSError("No such device")
+
+        with pytest.raises(RuntimeError, match="Failed to open CAN interface 'can9'"):
+            CAN_Manager_servo(channel="can9")
+
+        assert CAN_Manager_servo._instance is None
 
 
 class TestMotorListener:
@@ -240,63 +244,6 @@ class TestOriginCommand:
         message = mock_can["bus"].send.call_args[0][0]
         assert message.arbitration_id == 0x501
         assert message.data == [2]
-
-
-class TestSocketCanConfiguration:
-    """Tests for explicit socketcan configuration helper."""
-
-    def test_configure_socketcan_success(self, mock_can: Dict[str, Any]) -> None:
-        with patch("cubemars_servo_can.can_manager.subprocess.run") as run:
-            CAN_Manager_servo.configure_socketcan(channel="can1", bitrate=250000)
-            assert run.call_count == 2
-            first_call = run.call_args_list[0][0][0]
-            second_call = run.call_args_list[1][0][0]
-            assert first_call == ["/sbin/ip", "link", "set", "can1", "down"]
-            assert second_call == [
-                "/sbin/ip",
-                "link",
-                "set",
-                "can1",
-                "up",
-                "type",
-                "can",
-                "bitrate",
-                "250000",
-            ]
-
-    def test_configure_socketcan_missing_ip_tool_raises(
-        self, mock_can: Dict[str, Any]
-    ) -> None:
-        with patch(
-            "cubemars_servo_can.can_manager.subprocess.run",
-            side_effect=FileNotFoundError("missing"),
-        ):
-            with pytest.raises(RuntimeError, match="Cannot find ip tool"):
-                CAN_Manager_servo.configure_socketcan(channel="can0")
-
-    def test_configure_socketcan_called_process_error_raises(
-        self, mock_can: Dict[str, Any]
-    ) -> None:
-        err = subprocess.CalledProcessError(returncode=1, cmd=["ip"])
-        with patch("cubemars_servo_can.can_manager.subprocess.run", side_effect=err):
-            with pytest.raises(RuntimeError, match="Failed to configure socketcan"):
-                CAN_Manager_servo.configure_socketcan(channel="can0")
-
-    def test_configure_socketcan_permission_error_surfaces_stderr(
-        self, mock_can: Dict[str, Any]
-    ) -> None:
-        err = subprocess.CalledProcessError(
-            returncode=2,
-            cmd=["ip", "link", "set", "can0", "down"],
-            stderr="RTNETLINK answers: Operation not permitted",
-        )
-        with patch("cubemars_servo_can.can_manager.subprocess.run", side_effect=err):
-            with pytest.raises(RuntimeError) as exc_info:
-                CAN_Manager_servo.configure_socketcan(channel="can0")
-
-        message = str(exc_info.value)
-        assert "CAP_NET_ADMIN" in message
-        assert "Operation not permitted" in message
 
 
 class TestListenerRegistrationLifecycle:

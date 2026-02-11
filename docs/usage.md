@@ -8,11 +8,16 @@ This guide covers how to initialize the motor and use the various control modes 
 
 The library uses a context manager (`with` block) to safely handle the connection, power-on sequence, and shutdown.
 
-Use one consistent non-`sudo` runtime flow:
+Use one consistent no-`sudo` app runtime flow:
 
-1. One-time host setup: grant `CAP_NET_ADMIN` to `ip`.
-2. Per-run app setup: call `CAN_Manager_servo.configure_socketcan(channel=..., bitrate=...)`.
-3. Run your app as a normal user.
+1. Configure your CAN interface (`can0`, `can1`, etc.) at boot with a root-managed service.
+2. Run the Python app as a normal user.
+3. Keep application code focused on motor control only.
+
+Default interface behavior:
+
+- `CubeMarsServoCAN(...)` defaults to `can0`.
+- You only need to pass `can_channel` when using another interface (for example `can1`).
 
 ### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
 
@@ -33,47 +38,63 @@ Reboot after editing `config.txt` so the overlay is applied:
 sudo reboot
 ```
 
-One-time capability setup for non-root link configuration:
+### Boot-Time Interface Setup (systemd)
+
+Create `/etc/systemd/system/can0.service` (or `can1.service` if using `can1`):
+
+```ini
+[Unit]
+Description=Bring up SocketCAN can0
+After=network-pre.target
+Before=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'ip link set can0 down || true'
+ExecStart=/bin/sh -c 'ip link set can0 up type can bitrate 1000000'
+ExecStart=/bin/sh -c 'ip link set can0 txqueuelen 65536'
+ExecStop=/bin/sh -c 'ip link set can0 down'
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and verify:
 
 ```bash
-sudo apt install -y libcap2-bin iproute2
-IP_BIN="$(readlink -f "$(command -v ip)")"
-sudo setcap cap_net_admin+ep "$IP_BIN"
-getcap "$IP_BIN"
+sudo systemctl daemon-reload
+sudo systemctl enable --now can0.service
+ip -details link show can0
 ```
 
-Security note: capability grants are host-level privileges. Review your system policy before using them.
-
-### Runtime Setup
-
-```python
-from cubemars_servo_can.can_manager import CAN_Manager_servo
-
-# Configure the interface your app will use (can0, can1, etc.).
-CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
-```
+This runs with root at boot, so your Python app can run without `sudo`.
+If your interface is `can1`, replace `can0` with `can1` in both the service file and commands above.
 
 ### Application Example
 
 ```python
-from cubemars_servo_can.can_manager import CAN_Manager_servo
 from cubemars_servo_can import CubeMarsServoCAN
 import time
 
-can_channel = "can0"  # Change to can1, etc. if needed.
-
-# 1. Configure SocketCAN for this interface (requires setcap setup above).
-CAN_Manager_servo.configure_socketcan(channel=can_channel, bitrate=1_000_000)
-
-# 2. Start motor control
-with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel=can_channel) as motor:
+# 1. Start motor control (interface must already be up via boot service).
+# can_channel defaults to "can0", so it can be omitted.
+with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1) as motor:
     print("Motor Connected!")
 
-    # 3. Control Logic goes here
+    # 2. Control Logic goes here
     # ...
 
     time.sleep(1)
     # Motor automatically powers off when exiting this block
+```
+
+If your interface is not `can0`, pass it explicitly:
+
+```python
+with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can1') as motor:
+    ...
 ```
 
 **Run it:**

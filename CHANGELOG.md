@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0 - 2026-02-11
+
+### Breaking Changes
+
+- Removed `CAN_Manager_servo.configure_socketcan(...)`.
+- Removed `CAN_Manager_servo(..., auto_configure=..., bitrate=...)` initialization path.
+
+### Hardening
+
+- Added explicit CAN-interface open failure handling with actionable `RuntimeError`.
+- Reset CAN manager singleton state when bus initialization fails, allowing clean retry.
+
+### Documentation
+
+- Standardized runtime guidance on root-managed boot-time interface setup (`systemd`).
+- Clarified default channel behavior (`can0` by default; pass `can_channel` only for other interfaces such as `can1`).
+
+### Validation
+
+- Test suite: `99 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*`
+- Lint: `ruff` clean
+
 ## 0.1.2 - 2026-02-11
 
 ### Production Hardening

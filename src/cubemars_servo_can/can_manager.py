@@ -1,5 +1,4 @@
 import can
-import subprocess
 import numpy as np
 from typing import List, Optional, TYPE_CHECKING, Dict
 
@@ -67,16 +66,12 @@ class CAN_Manager_servo(object):
     def __new__(
         cls,
         channel: str = "can0",
-        auto_configure: bool = False,
-        bitrate: int = 1000000,
     ) -> "CAN_Manager_servo":
         """
         Makes a singleton object to manage a socketcan_native CAN bus.
 
         Args:
             channel: The CAN channel name (e.g. 'can0', 'vcan0')
-            auto_configure: Whether to run socketcan setup commands before opening the bus.
-            bitrate: Bitrate used when auto-configuring socketcan.
         """
         if cls._instance is None:
             cls._instance = super(CAN_Manager_servo, cls).__new__(cls)
@@ -85,11 +80,16 @@ class CAN_Manager_servo(object):
             # Save channel for later use
             cls._instance.channel = channel
 
-            if auto_configure:
-                cls.configure_socketcan(channel=channel, bitrate=bitrate)
-
             # Create a python-can bus object
-            cls._instance.bus = can.interface.Bus(channel=channel, bustype="socketcan")
+            try:
+                cls._instance.bus = can.interface.Bus(channel=channel, bustype="socketcan")
+            except Exception as e:
+                # Reset singleton on initialization failure so subsequent attempts can retry cleanly.
+                cls._instance = None
+                raise RuntimeError(
+                    f"Failed to open CAN interface '{channel}'. "
+                    f"Ensure the interface exists and is UP before starting the app."
+                ) from e
             # Create a python-can notifier object, which motors can later subscribe to
             cls._instance.notifier = can.Notifier(bus=cls._instance.bus, listeners=[])
             cls._instance._listeners = {}
@@ -106,49 +106,11 @@ class CAN_Manager_servo(object):
     def __init__(
         self,
         channel: str = "can0",
-        auto_configure: bool = False,
-        bitrate: int = 1000000,
     ) -> None:
         """
         All initialization happens in __new__
         """
         pass
-
-    @staticmethod
-    def configure_socketcan(
-        channel: str = "can0", bitrate: int = 1000000, ip_tool: str = "/sbin/ip"
-    ) -> None:
-        """
-        Configure a socketcan interface.
-
-        This helper does not use sudo. Callers should run it with appropriate privileges.
-        """
-        try:
-            run_kwargs = {"check": True, "capture_output": True, "text": True}
-            subprocess.run([ip_tool, "link", "set", channel, "down"], **run_kwargs)
-            subprocess.run(
-                [
-                    ip_tool,
-                    "link",
-                    "set",
-                    channel,
-                    "up",
-                    "type",
-                    "can",
-                    "bitrate",
-                    str(bitrate),
-                ],
-                **run_kwargs,
-            )
-        except FileNotFoundError as e:
-            raise RuntimeError(f"Cannot find ip tool at '{ip_tool}'") from e
-        except subprocess.CalledProcessError as e:
-            stderr = (e.stderr or "").strip()
-            detail = f": {stderr}" if stderr else ""
-            raise RuntimeError(
-                f"Failed to configure socketcan interface '{channel}' via '{ip_tool}' "
-                f"(requires CAP_NET_ADMIN){detail}"
-            ) from e
 
     def __del__(self) -> None:
         """
