@@ -10,28 +10,29 @@ class MotorConfig:
 
     # Position limits (rad or deg, depending on context)
     # Original library sent these as int32, so -32000 corresponds to -3200 deg in some contexts
-    P_min: float = -12.5  # -3200 deg
-    P_max: float = 12.5  # 3200 deg
+    P_min: float = -32000.0  # -3200 deg
+    P_max: float = 32000.0  # 3200 deg
 
     # Velocity limits (RPM electrical speed or similar)
-    V_min: float = -50.0  # -100000 rpm electrical speed
-    V_max: float = 50.0  # 100000 rpm electrical speed
+    V_min: float = -32000.0  # -320000 rpm electrical speed
+    V_max: float = 32000.0  # 320000 rpm electrical speed
 
     # Current limits (Amps)
-    Curr_min: float = -15.0  # -60A is the actual limit but set to -15A for safety
-    Curr_max: float = 15.0  # 60A is the actual limit but set to 15A for safety
+    # Note: 60A is the actual hardware limit, but defaults are often set lower for safety
+    Curr_min: float = -1500.0
+    Curr_max: float = 1500.0
 
     # Torque limits (Nm)
-    T_min: float = -15.0  # NM
-    T_max: float = 15.0  # NM
+    T_min: float = -30.0  # NM
+    T_max: float = 30.0  # NM
 
     # Motor Constants
-    Kt_TMotor: float = 0.1  # from TMotor website (actually 1/Kvll)
+    Kt_TMotor: float = 0.091  # from TMotor website (actually 1/Kvll)
     Current_Factor: float = 0.59  # UNTESTED CONSTANT!
-    Kt_actual: float = 0.1  # UNTESTED CONSTANT!
+    Kt_actual: float = 0.115  # UNTESTED CONSTANT!
 
     # Gearbox and Pole Pairs
-    GEAR_RATIO: float = 1.0
+    GEAR_RATIO: float = 9.0
     NUM_POLE_PAIRS: int = 21
 
     # Usage flags
