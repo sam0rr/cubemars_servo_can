@@ -75,6 +75,13 @@ class CubeMarsServoCAN:
             "motor_current": self.get_current_qaxis_amps,
             "motor_temperature": self.get_temperature_celsius,
         }
+        invalid_log_vars = [
+            var for var in self.log_vars if var not in self.LOG_FUNCTIONS
+        ]
+        if invalid_log_vars:
+            raise ValueError(
+                f"Unknown log_vars: {invalid_log_vars}. Valid values are: {sorted(self.LOG_FUNCTIONS.keys())}"
+            )
 
         self._canman = CAN_Manager_servo(channel=can_channel)
         self._canman.add_motor(self)
@@ -201,6 +208,10 @@ class CubeMarsServoCAN:
             self._async_error = None
             raise async_error
 
+        self._motor_state.set_state_obj(self._motor_state_async)
+        # Apply Gear Ratio to position
+        self._motor_state.position = self._motor_state.position / self.config.GEAR_RATIO
+
         if self.get_temperature_celsius() > self.max_temp:
             raise RuntimeError(
                 f"Temperature greater than {self.max_temp}C for device: {self.device_info_string()}"
@@ -216,10 +227,6 @@ class CubeMarsServoCAN:
             )
         else:
             self._command_sent = False
-
-        self._motor_state.set_state_obj(self._motor_state_async)
-        # Apply Gear Ratio to position
-        self._motor_state.position = self._motor_state.position / self.config.GEAR_RATIO
 
         self._send_command()
 
@@ -616,6 +623,8 @@ class CubeMarsServoCAN:
         self._canman.notifier.add_listener(listener)
         try:
             start_time = time.time()
+            deadline = start_time + 1.0
+            max_messages = 200
             for i in range(3):
                 self.power_on()
                 time.sleep(0.001)
@@ -623,23 +632,31 @@ class CubeMarsServoCAN:
             # Wait for responses
             time.sleep(0.05)
 
-            # Check if we got any messages from this motor
-            msg_count = 0
-            while True:
+            # Check for at least one valid status frame from this motor.
+            messages_checked = 0
+            while messages_checked < max_messages and time.time() < deadline:
                 msg = listener.get_message(timeout=0.01)
                 if msg is None:
                     break
+                messages_checked += 1
                 msg_timestamp = getattr(msg, "timestamp", None)
                 if (
                     isinstance(msg_timestamp, (int, float))
                     and msg_timestamp < start_time
                 ):
                     continue
-                # Check if message is from this motor
-                if (msg.arbitration_id & 0x00000FF) == self.ID:
-                    msg_count += 1
+                if msg.arbitration_id != self.ID:
+                    continue
+                data = bytes(msg.data)
+                if len(data) != 8:
+                    continue
+                try:
+                    self._canman.parse_servo_message(data)
+                except Exception:
+                    continue
+                return True
 
-            return msg_count > 0
+            return False
         finally:
             self._canman.notifier.remove_listener(listener)
 

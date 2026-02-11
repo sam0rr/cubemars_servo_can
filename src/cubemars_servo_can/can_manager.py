@@ -34,14 +34,17 @@ class MotorListener(can.Listener):
         Args:
             msg: A python-can CAN message
         """
+        # Accept only direct status frames from this motor ID.
+        # This avoids treating arbitrary same-low-byte traffic as telemetry.
+        if msg.arbitration_id != self.motor.ID:
+            return
+
         data = bytes(msg.data)
-        ID = msg.arbitration_id & 0x00000FF
-        if ID == self.motor.ID:
-            try:
-                self.motor._update_state_async(self.canman.parse_servo_message(data))
-            except Exception as exc:
-                # Keep listener thread alive and surface the error on the control thread.
-                self.motor._set_listener_error(exc)
+        try:
+            self.motor._update_state_async(self.canman.parse_servo_message(data))
+        except Exception as exc:
+            # Keep listener thread alive and surface the error on the control thread.
+            self.motor._set_listener_error(exc)
 
 
 class CAN_Manager_servo(object):

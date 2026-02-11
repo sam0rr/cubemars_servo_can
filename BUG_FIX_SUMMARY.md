@@ -14,8 +14,8 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `112 passed`
-- Source coverage: `100%` (`545/545` statements)
+- `119 passed`
+- Source coverage: `100%` (`559/559` statements)
 - `ruff`: clean
 
 ## Verified Bug Register (Sequential IDs)
@@ -177,6 +177,30 @@ Status legend:
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Tests: `test_default_log_vars_are_isolated_per_instance`
 
+26. `BUG-026` `check_can_connection()` could loop unbounded on continuously busy traffic.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_check_connection_busy_stream_is_bounded`
+
+27. `BUG-027` Same-low-byte CAN IDs could be treated as motor status/connection evidence.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`, `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_listener_ignores_same_low_byte_non_status_id`, `test_check_connection_rejects_non_exact_arbitration_id`
+
+28. `BUG-028` Over-temperature safety check could lag by one `update()` cycle.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_update_uses_latest_async_temperature_before_send`
+
+29. `BUG-029` Unknown `log_vars` keys failed late at runtime (`KeyError`) instead of init-time validation.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_initialization_rejects_unknown_log_vars`
+
 ## Corrected Prior Inaccurate Claim
 
 1. `CORR-001` Prior claim: temperature overflow at 127C due to `np.int16(data[6])`.
@@ -207,4 +231,4 @@ Inherited defects were verified against:
 
 - `TMotorCANControl/src/TMotorCANControl/servo_can.py`
 
-Confirmed inherited patterns included negative `dt`, unit mismatches in limit checks, weak connection check behavior, silent send failure behavior, and mutable-default argument leakage.
+Confirmed inherited patterns included negative `dt`, unit mismatches in limit checks, weak connection-check behavior (including low-byte ID matching), silent send failure behavior, and mutable-default argument leakage.

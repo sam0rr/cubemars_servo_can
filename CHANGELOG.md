@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.3 - 2026-02-11
+
+### Security Hardening
+
+- Bounded `check_can_connection()` message scanning to prevent unbounded loops on continuously busy CAN traffic.
+- Tightened connection validation to require exact motor status arbitration ID and parseable 8-byte status frames.
+- Tightened listener dispatch to accept only exact motor status arbitration IDs, preventing same-low-byte frame spoofing from being treated as telemetry.
+- Moved over-temperature safety check to run on the latest async state before command send, eliminating one-cycle delayed shutdown behavior.
+- Added initialization-time validation for `log_vars` to reject unknown keys with clear `ValueError` instead of runtime `KeyError` during `update()`.
+
+### Validation
+
+- Test suite: `119 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`559/559` statements)
+- Lint: `ruff` clean
+
 ## 0.2.2 - 2026-02-11
 
 ### Fixed

@@ -67,6 +67,16 @@ class TestInitialization:
         assert "custom_metric" not in motor2.log_vars
         assert "custom_metric" not in DEFAULT_LOG_VARIABLES
 
+    def test_initialization_rejects_unknown_log_vars(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        with pytest.raises(ValueError, match="Unknown log_vars"):
+            CubeMarsServoCAN(
+                motor_type="AK80-9",
+                motor_ID=1,
+                log_vars=["motor_position", "not_a_real_log_var"],
+            )
+
 
 class TestEnterExit:
     """Tests for context manager enter/exit."""
@@ -666,6 +676,7 @@ class TestCheckCanConnection:
         # Create a mock message from the motor
         mock_msg = MagicMock()
         mock_msg.arbitration_id = 0x001  # Matches motor ID 1
+        mock_msg.data = bytes([0] * 8)
 
         # Mock BufferedReader to return a message
         with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
@@ -675,6 +686,91 @@ class TestCheckCanConnection:
 
             result = motor.check_can_connection()
             assert result is True
+
+    def test_check_connection_rejects_non_exact_arbitration_id(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Only exact motor status IDs should be accepted as connection evidence."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        spoof_msg = MagicMock()
+        spoof_msg.arbitration_id = 0x601  # low-byte matches but command-like ID
+        spoof_msg.timestamp = 11.0
+        spoof_msg.data = bytes([0] * 8)
+
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.side_effect = [spoof_msg, None]
+            mock_reader.return_value = mock_instance
+
+            with patch("time.time", return_value=10.0):
+                assert motor.check_can_connection() is False
+
+    def test_check_connection_busy_stream_is_bounded(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Connection check should not loop forever on continuously busy invalid traffic."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        noisy_msg = MagicMock()
+        noisy_msg.arbitration_id = 0x002  # always wrong motor ID
+        noisy_msg.timestamp = 10.1
+        noisy_msg.data = bytes([0] * 8)
+
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.return_value = noisy_msg
+            mock_reader.return_value = mock_instance
+
+            with patch("time.time", return_value=10.0):
+                assert motor.check_can_connection() is False
+            assert mock_instance.get_message.call_count == 200
+
+    def test_check_connection_ignores_unparseable_status_frames(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        bad_frame = MagicMock()
+        bad_frame.arbitration_id = 0x001
+        bad_frame.timestamp = 10.1
+        bad_frame.data = bytes([0] * 8)
+
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.side_effect = [bad_frame, None]
+            mock_reader.return_value = mock_instance
+
+            with patch("time.time", return_value=10.0):
+                with patch.object(
+                    motor._canman,
+                    "parse_servo_message",
+                    side_effect=ValueError("bad frame"),
+                ) as parse_mock:
+                    assert motor.check_can_connection() is False
+                    parse_mock.assert_called_once_with(bytes([0] * 8))
+
+    def test_check_connection_ignores_non_8_byte_frames(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        short_frame = MagicMock()
+        short_frame.arbitration_id = 0x001
+        short_frame.timestamp = 10.1
+        short_frame.data = bytes([0] * 7)
+
+        with patch("cubemars_servo_can.servo_can.can.BufferedReader") as mock_reader:
+            mock_instance = MagicMock()
+            mock_instance.get_message.side_effect = [short_frame, None]
+            mock_reader.return_value = mock_instance
+
+            with patch("time.time", return_value=10.0):
+                assert motor.check_can_connection() is False
 
 
 class TestErrorHandling:
@@ -800,9 +896,22 @@ class TestContextManagerAndUpdateBranches:
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
-        motor._motor_state.temperature = motor.max_temp + 1.0
+        motor._motor_state_async.temperature = motor.max_temp + 1.0
         with pytest.raises(RuntimeError, match="Temperature greater than"):
             motor.update()
+
+    def test_update_uses_latest_async_temperature_before_send(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor._motor_state.temperature = 20.0
+        motor._motor_state_async.temperature = motor.max_temp + 5.0
+
+        with patch.object(motor, "_send_command") as send_command:
+            with pytest.raises(RuntimeError, match="Temperature greater than"):
+                motor.update()
+            send_command.assert_not_called()
 
     def test_update_warns_on_stale_state(self, mock_can: Dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)

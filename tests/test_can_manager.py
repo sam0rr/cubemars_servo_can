@@ -231,7 +231,7 @@ class TestMotorListener:
 
         listener = MotorListener(can_manager, motor)
         msg = MagicMock()
-        msg.arbitration_id = 0x305  # lower byte = 0x05
+        msg.arbitration_id = 0x005
         msg.data = bytes([0] * 8)
 
         listener.on_message_received(msg)
@@ -241,15 +241,33 @@ class TestMotorListener:
         self, mock_can: Dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
         motor = MagicMock()
         motor.ID = 1
         listener = MotorListener(can_manager, motor)
         msg = MagicMock()
-        msg.arbitration_id = 0x302  # lower byte = 0x02
+        msg.arbitration_id = 0x002
         msg.data = bytes([0] * 8)
 
         listener.on_message_received(msg)
         motor._update_state_async.assert_not_called()
+        can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_listener_ignores_same_low_byte_non_status_id(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
+        motor = MagicMock()
+        motor.ID = 5
+        listener = MotorListener(can_manager, motor)
+        msg = MagicMock()
+        msg.arbitration_id = 0x305  # low-byte match, but not exact status ID
+        msg.data = bytes([0] * 8)
+
+        listener.on_message_received(msg)
+        motor._update_state_async.assert_not_called()
+        can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
 
     def test_listener_surfaces_parse_errors_to_motor(
         self, mock_can: Dict[str, Any]
@@ -262,7 +280,7 @@ class TestMotorListener:
         listener = MotorListener(can_manager, motor)
 
         msg = MagicMock()
-        msg.arbitration_id = 0x301  # lower byte = 0x01
+        msg.arbitration_id = 0x001
         msg.data = bytes([0] * 8)
 
         listener.on_message_received(msg)
