@@ -164,7 +164,7 @@ class CAN_Manager_servo(object):
     def comm_can_set_duty(self, controller_id: int, duty: float) -> None:
         """
         Send a servo control message for duty cycle mode.
-        Duty cycle mode: duty cycle voltage is specified for a given motor.
+        Duty cycle mode: duty cycle voltage is specified for a given motor, similar to squarewave drive mode.
 
         Args:
             controller_id: CAN ID of the motor to send the message to
@@ -181,7 +181,7 @@ class CAN_Manager_servo(object):
     def comm_can_set_current(self, controller_id: int, current: float) -> None:
         """
         Send a servo control message for current loop mode.
-        Current loop mode: given the Iq current specified by the motor, the motor output torque = Iq * KT.
+        Current loop mode: given the Iq current specified by the motor, the motor output torque = Iq * KT, so it can be used as a torque loop.
 
         Args:
             controller_id: CAN ID of the motor to send the message to
@@ -198,7 +198,7 @@ class CAN_Manager_servo(object):
     def comm_can_set_cb(self, controller_id: int, current: float) -> None:
         """
         Send a servo control message for current brake mode.
-        Current brake mode: the motor is fixed at the current position by the specified brake current.
+        Current brake mode: the motor is fixed at the current position by the specified brake current given by the motor (pay attention to the motor temperature when using).
 
         Args:
             controller_id: CAN ID of the motor to send the message to
@@ -232,7 +232,7 @@ class CAN_Manager_servo(object):
     def comm_can_set_pos(self, controller_id: int, pos: float) -> None:
         """
         Send a servo control message for position control mode.
-        Position mode: Given the specified position of the motor, the motor will run to the specified position.
+        Position mode: Given the specified position of the motor, the motor will run to the specified position, (default speed 12000erpm acceleration 40000erpm).
 
         Args:
             controller_id: CAN ID of the motor to send the message to
