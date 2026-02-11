@@ -8,9 +8,14 @@ The test suite is treated as the source of truth.
 ## Validation Commands
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run pytest tests/ -q
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
 UV_CACHE_DIR=/tmp/uv-cache uv run ruff check src tests
 ```
+
+Current validation result:
+- `93 passed`
+- Source coverage: `100%` (`472/472` statements)
+- `ruff`: clean
 
 ## Verified Bug Register (Sequential IDs)
 

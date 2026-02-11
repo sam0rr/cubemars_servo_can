@@ -3,7 +3,8 @@
 import pytest
 from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
-from cubemars_servo_can.can_manager import CAN_Manager_servo
+from cubemars_servo_can.can_manager import CAN_Manager_servo, MotorListener
+from cubemars_servo_can.motor_state import ServoMotorState
 
 
 @pytest.fixture
@@ -144,3 +145,90 @@ class TestSingletonBehavior:
         CAN_Manager_servo(channel="vcan0")
         with pytest.raises(RuntimeError, match="already initialized"):
             CAN_Manager_servo(channel="can0")
+
+
+class TestMotorListener:
+    """Tests for listener message dispatch."""
+
+    def test_listener_updates_matching_motor(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        motor = MagicMock()
+        motor.ID = 5
+        state = ServoMotorState(0.0, 0.0, 0.0, 25.0, 0, 0.0)
+        can_manager.parse_servo_message = MagicMock(return_value=state)  # type: ignore[method-assign]
+
+        listener = MotorListener(can_manager, motor)
+        msg = MagicMock()
+        msg.arbitration_id = 0x305  # lower byte = 0x05
+        msg.data = bytes([0] * 8)
+
+        listener.on_message_received(msg)
+        motor._update_state_async.assert_called_once_with(state)
+
+    def test_listener_ignores_non_matching_motor(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        motor = MagicMock()
+        motor.ID = 1
+        listener = MotorListener(can_manager, motor)
+        msg = MagicMock()
+        msg.arbitration_id = 0x302  # lower byte = 0x02
+        msg.data = bytes([0] * 8)
+
+        listener.on_message_received(msg)
+        motor._update_state_async.assert_not_called()
+
+
+class TestDebugBranches:
+    """Tests for debug print branches."""
+
+    def test_send_servo_message_debug_success_prints(
+        self, mock_can: Dict[str, Any], capsys
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.debug = True
+        can_manager.send_servo_message(motor_id=1, data=[0x12], data_len=0)
+        out = capsys.readouterr().out
+        assert "ID:" in out
+        assert "Message sent on" in out
+        can_manager.debug = False
+
+    def test_send_servo_message_debug_error_prints(
+        self, mock_can: Dict[str, Any], capsys
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.debug = True
+
+        class DummyCanError(Exception):
+            pass
+
+        mock_can["can"].CanError = DummyCanError
+        mock_can["bus"].send.side_effect = DummyCanError("send failed")
+
+        with pytest.raises(RuntimeError, match="Failed to send CAN message"):
+            can_manager.send_servo_message(motor_id=1, data=[0x12], data_len=0)
+
+        out = capsys.readouterr().out
+        assert "Message NOT sent" in out
+        can_manager.debug = False
+
+    def test_parse_servo_message_debug_prints(
+        self, mock_can: Dict[str, Any], capsys
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.debug = True
+        can_manager.parse_servo_message(bytes([0x00, 0x01, 0, 0, 0, 0, 0x2A, 0x00]))
+        out = capsys.readouterr().out
+        assert "Position:" in out
+        assert "Temp:" in out
+        can_manager.debug = False
+
+
+class TestOriginCommand:
+    """Tests for origin command wrapper."""
+
+    def test_set_origin_command_format(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.comm_can_set_origin(controller_id=1, set_origin_mode=2)
+        message = mock_can["bus"].send.call_args[0][0]
+        assert message.arbitration_id == 0x501
+        assert message.data == [2]
