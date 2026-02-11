@@ -71,6 +71,20 @@ cd cubemars_servo_can
 uv sync
 ```
 
+## Requirements & Privileges
+
+**⚠️ Important: Sudo Access Required**
+
+This library automatically manages the CAN interface state for convenience. To do this, it executes system commands (`ip link set ...`) which require `sudo` privileges.
+
+**You must run your Python script with `sudo`:**
+
+```bash
+sudo uv run python your_script.py
+# or
+sudo python your_script.py
+```
+
 ## Usage Example
 
 ```python
@@ -78,12 +92,15 @@ from cubemars_servo_can import CubeMarsServoCAN
 import time
 
 # Initialize the motor (e.g., AK40-10 with CAN ID 1)
-# NOTE: Ensure your CAN interface (can0) is up before running
-with CubeMarsServoCAN(motor_type='AK40-10', motor_ID=1) as motor:
+# You can specify the CAN channel (default is 'can0')
+with CubeMarsServoCAN(motor_type='AK40-10', motor_ID=1, can_channel='can0') as motor:
     print("Motor Connected!")
 
     # 1. Enter Control Mode
     motor.enter_duty_cycle_control()
+    
+    # ... rest of your code
+```
 
     # 2. Set Command (5% duty cycle)
     motor.set_duty_cycle_percent(0.05)
