@@ -8,7 +8,7 @@ from .motor_state import ServoMotorState
 from .utils import buffer_append_int16, buffer_append_int32
 
 if TYPE_CHECKING:
-    from .servo_can import CubeMarsServoCAN
+    from .motor import CubeMarsServoCAN
 
 
 class MotorListener(can.Listener):

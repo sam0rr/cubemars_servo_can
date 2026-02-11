@@ -1,4 +1,4 @@
-from .servo_can import CubeMarsServoCAN
+from .motor import CubeMarsServoCAN
 from .config import get_motor_config, MotorConfig
 from .constants import ControlMode
 
