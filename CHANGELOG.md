@@ -19,7 +19,7 @@
 
 ### Validation
 
-- Test suite: `99 passed`
+- Test suite: `100 passed`
 - Coverage: `100%` for `src/cubemars_servo_can/*`
 - Lint: `ruff` clean
 

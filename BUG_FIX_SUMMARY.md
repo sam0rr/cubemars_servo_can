@@ -14,8 +14,8 @@ UV_CACHE_DIR=/tmp/uv-cache uv run ruff check src tests
 
 Current validation result:
 
-- `102 passed`
-- Source coverage: `100%` (`532/532` statements)
+- `100 passed`
+- Source coverage: `100%` (`524/524` statements)
 - `ruff`: clean
 
 ## Verified Bug Register (Sequential IDs)
@@ -131,7 +131,7 @@ Status legend:
 
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/can_manager.py`
-- Tests: `TestSocketCanConfiguration`
+- Tests: `TestRemovedRuntimeConfiguration`
 
 19. `BUG-019` CAN manager lacked deterministic shutdown path.
 

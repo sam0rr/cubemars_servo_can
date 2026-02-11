@@ -268,3 +268,11 @@ class TestListenerRegistrationLifecycle:
         with patch.object(can_manager, "close", side_effect=RuntimeError("close boom")):
             # Should not raise
             can_manager.__del__()
+
+
+class TestRemovedRuntimeConfiguration:
+    """Tests for removed runtime socketcan configuration API."""
+
+    def test_configure_socketcan_api_removed(self) -> None:
+        assert not hasattr(CAN_Manager_servo, "configure_socketcan")
+
