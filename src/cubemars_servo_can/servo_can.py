@@ -2,252 +2,23 @@ import can
 import time
 import csv
 import traceback
-import os
 import warnings
 from typing import List, Optional, Dict, Any, TextIO
 
 import numpy as np
 
-from .constants import CAN_PACKET_ID, ERROR_CODES, DEFAULT_LOG_VARIABLES, ControlMode
+from .constants import ERROR_CODES, DEFAULT_LOG_VARIABLES, ControlMode
 from .config import get_motor_config, MotorConfig
-from .utils import buffer_append_int16, buffer_append_int32
-
-
-class ServoMotorState:
-    """Data structure to store and update motor states."""
-
-    def __init__(
-        self,
-        position: float,
-        velocity: float,
-        current: float,
-        temperature: float,
-        error: int,
-        acceleration: float,
-    ) -> None:
-        self.set_state(position, velocity, current, temperature, error, acceleration)
-
-    def set_state(
-        self,
-        position: float,
-        velocity: float,
-        current: float,
-        temperature: float,
-        error: int,
-        acceleration: float,
-    ) -> None:
-        self.position = position
-        self.velocity = velocity
-        self.current = current
-        self.temperature = temperature
-        self.error = error
-        self.acceleration = acceleration
-
-    def set_state_obj(self, other_motor_state: "ServoMotorState") -> None:
-        self.position = other_motor_state.position
-        self.velocity = other_motor_state.velocity
-        self.current = other_motor_state.current
-        self.temperature = other_motor_state.temperature
-        self.error = other_motor_state.error
-        self.acceleration = other_motor_state.acceleration
-
-    def __str__(self) -> str:
-        return f"Position: {self.position} | Velocity: {self.velocity} | Current: {self.current} | Temperature: {self.temperature} | Error: {self.error}"
-
-
-class ServoCommand:
-    """Data structure to store Servo command that will be sent upon update."""
-
-    def __init__(
-        self,
-        position: float,
-        velocity: float,
-        current: float,
-        duty: float,
-        acceleration: float,
-    ) -> None:
-        self.position = position
-        self.velocity = velocity
-        self.current = current
-        self.duty = duty
-        self.acceleration = acceleration
-
-
-class MotorListener(can.Listener):
-    """Python-can listener object, with handler to be called upon reception of a message on the CAN bus."""
-
-    def __init__(self, canman: "CAN_Manager_servo", motor: "CubeMarsServoCAN") -> None:
-        self.canman = canman
-        self.bus = canman.bus
-        self.motor = motor
-
-    def on_message_received(self, msg: can.Message) -> None:
-        data = bytes(msg.data)
-        ID = msg.arbitration_id & 0x00000FF
-        if ID == self.motor.ID:
-            self.motor._update_state_async(self.canman.parse_servo_message(data))
-
-
-class CAN_Manager_servo(object):
-    """A class to manage the low level CAN communication protocols."""
-
-    debug: bool = False
-    _instance: Optional["CAN_Manager_servo"] = None
-
-    # Instance attributes for type checking
-    channel: str
-    bus: can.interface.Bus
-    notifier: can.Notifier
-
-    def __new__(cls, channel: str = "can0") -> "CAN_Manager_servo":
-        if cls._instance is None:
-            cls._instance = super(CAN_Manager_servo, cls).__new__(cls)
-            print("Initializing CAN Manager")
-
-            # Save channel for later use
-            cls._instance.channel = channel
-
-            # verify the CAN bus is currently down
-            os.system(f"sudo /sbin/ip link set {channel} down")
-            # start the CAN bus back up
-            os.system(f"sudo /sbin/ip link set {channel} up type can bitrate 1000000")
-
-            cls._instance.bus = can.interface.Bus(channel=channel, bustype="socketcan")
-            cls._instance.notifier = can.Notifier(bus=cls._instance.bus, listeners=[])
-            print("Connected on: " + str(cls._instance.bus))
-
-        return cls._instance
-
-    def __init__(self, channel: str = "can0") -> None:
-        pass
-
-    def __del__(self) -> None:
-        if hasattr(self, "channel"):
-            os.system(f"sudo /sbin/ip link set {self.channel} down")
-
-    def add_motor(self, motor: "CubeMarsServoCAN") -> None:
-        self.notifier.add_listener(MotorListener(self, motor))
-
-    def send_servo_message(self, motor_id: int, data: List[int], data_len: int) -> None:
-        DLC = data_len
-        assert DLC <= 8, f"Data too long in message for motor {motor_id}"
-
-        if self.debug:
-            print(f"ID: {hex(motor_id)}   Data: [{', '.join(hex(d) for d in data)}]")
-
-        message = can.Message(arbitration_id=motor_id, data=data, is_extended_id=True)
-
-        try:
-            self.bus.send(message)
-            if self.debug:
-                print(f"    Message sent on {self.bus.channel_info}")
-        except can.CanError as e:
-            if self.debug:
-                print(f"    Message NOT sent: {e}")
-
-    def power_on(self, motor_id: int) -> None:
-        self.send_servo_message(
-            motor_id, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC], 0
-        )
-
-    def power_off(self, motor_id: int) -> None:
-        self.send_servo_message(
-            motor_id, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD], 0
-        )
-
-    # --- Mode Setters ---
-
-    def comm_can_set_duty(self, controller_id: int, duty: float) -> None:
-        buffer: List[int] = []
-        buffer_append_int32(buffer, int(duty * 100000.0))
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_DUTY"] << 8),
-            buffer,
-            0,
-        )
-
-    def comm_can_set_current(self, controller_id: int, current: float) -> None:
-        buffer: List[int] = []
-        buffer_append_int32(buffer, int(current * 1000.0))
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_CURRENT"] << 8),
-            buffer,
-            0,
-        )
-
-    def comm_can_set_cb(self, controller_id: int, current: float) -> None:
-        buffer: List[int] = []
-        buffer_append_int32(buffer, int(current * 1000.0))
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_CURRENT_BRAKE"] << 8),
-            buffer,
-            0,
-        )
-
-    def comm_can_set_rpm(self, controller_id: int, rpm: float) -> None:
-        buffer: List[int] = []
-        buffer_append_int32(buffer, int(rpm))
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_RPM"] << 8),
-            buffer,
-            0,
-        )
-
-    def comm_can_set_pos(self, controller_id: int, pos: float) -> None:
-        buffer: List[int] = []
-        buffer_append_int32(buffer, int(pos * 1000000.0))
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_POS"] << 8),
-            buffer,
-            0,
-        )
-
-    def comm_can_set_origin(self, controller_id: int, set_origin_mode: int) -> None:
-        buffer = [set_origin_mode]
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_ORIGIN_HERE"] << 8),
-            buffer,
-            0,
-        )
-
-    def comm_can_set_pos_spd(
-        self, controller_id: int, pos: float, spd: float, RPA: float
-    ) -> None:
-        buffer: List[int] = []
-        buffer_append_int32(buffer, int(pos * 10000.0))
-        buffer_append_int16(buffer, int(spd))
-        buffer_append_int16(buffer, int(RPA))
-        self.send_servo_message(
-            controller_id | (CAN_PACKET_ID["SET_POS_SPD"] << 8),
-            buffer,
-            0,
-        )
-
-    def parse_servo_message(self, data: bytes) -> ServoMotorState:
-        # using numpy to convert signed/unsigned integers
-        pos_int = np.int16(data[0] << 8 | data[1])
-        spd_int = np.int16(data[2] << 8 | data[3])
-        cur_int = np.int16(data[4] << 8 | data[5])
-        motor_pos = float(pos_int * 0.1)  # motor position
-        motor_spd = float(spd_int * 10.0)  # motor speed
-        motor_cur = float(cur_int * 0.01)  # motor current
-        motor_temp = float(np.int16(data[6]))  # motor temperature
-        motor_error = int(data[7])  # motor error mode
-
-        if self.debug:
-            print(f"  Position: {motor_pos}")
-            print(f"  Velocity: {motor_spd}")
-            print(f"  Current: {motor_cur}")
-            print(f"  Temp: {motor_temp}")
-            print(f"  Error: {motor_error}")
-
-        return ServoMotorState(
-            motor_pos, motor_spd, motor_cur, motor_temp, motor_error, 0.0
-        )
+from .motor_state import ServoMotorState, ServoCommand
+from .can_manager import CAN_Manager_servo
 
 
 class CubeMarsServoCAN:
-    """The user-facing class that manages the motor."""
+    """
+    The user-facing class that manages the motor. This class should be
+    used in the context of a with as block, in order to safely enter/exit
+    control of the motor.
+    """
 
     def __init__(
         self,
@@ -260,6 +31,9 @@ class CubeMarsServoCAN:
         config_overrides: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
+        Sets up the motor manager. Note the device will not be powered on by this method! You must
+        call __enter__, mostly commonly by using a with block, before attempting to control the motor.
+
         Args:
             motor_type: The type of motor being controlled, ie AK80-9.
             motor_ID: The CAN ID of the motor.
@@ -306,14 +80,15 @@ class CubeMarsServoCAN:
         self.csv_file: Optional[TextIO] = None
 
     def __enter__(self) -> "CubeMarsServoCAN":
+        """
+        Used to safely power the motor on and begin the log file.
+        """
         print(f"Turning on control for device: {self.device_info_string()}")
         if self.csv_file_name is not None:
             with open(self.csv_file_name, "w") as fd:
                 writer = csv.writer(fd)
                 writer.writerow(["pi_time"] + self.log_vars)
             self.csv_file = open(self.csv_file_name, "a")
-            # We don't need to call __enter__ on the file manually if we keep it open
-            # But the original code was weird. We will just keep the handle.
             self.csv_writer = csv.writer(self.csv_file)
 
         self.power_on()
@@ -324,6 +99,9 @@ class CubeMarsServoCAN:
         return self
 
     def __exit__(self, etype, value, tb) -> None:
+        """
+        Used to safely power the motor off and close the log file.
+        """
         print(f"Turning off control for device: {self.device_info_string()}")
         self.power_off()
 
@@ -334,6 +112,9 @@ class CubeMarsServoCAN:
             traceback.print_exception(etype, value, tb)
 
     def qaxis_current_to_TMotor_current(self, iq: float) -> float:
+        """
+        Convert Q-axis current to T-Motor current.
+        """
         return (
             iq
             * (self.config.GEAR_RATIO * self.config.Kt_TMotor)
@@ -341,6 +122,16 @@ class CubeMarsServoCAN:
         )
 
     def _update_state_async(self, servo_state: ServoMotorState) -> None:
+        """
+        This method is called by the handler every time a message is recieved on the bus
+        from this motor, to store the most recent state information for later.
+
+        Args:
+            servo_state: the servo_state object with the updated motor state
+
+        Raises:
+            RuntimeError when device sends back an error code that is not 0 (0 meaning no error)
+        """
         if servo_state.error != 0:
             error_msg = ERROR_CODES.get(servo_state.error, "Unknown Error")
             raise RuntimeError(
@@ -361,6 +152,10 @@ class CubeMarsServoCAN:
         self._updated = True
 
     def update(self) -> None:
+        """
+        This method is called by the user to synchronize the current state used by the controller/logger
+        with the most recent message recieved, as well as to send the current command.
+        """
         if not self._entered:
             raise RuntimeError(
                 f"Tried to update motor state before safely powering on for device: {self.device_info_string()}"
@@ -397,6 +192,10 @@ class CubeMarsServoCAN:
         self._updated = False
 
     def _send_command(self) -> None:
+        """
+        Sends a command to the motor depending on what control mode the motor is in. This method
+        is called by update(), and should only be called on its own if you don't want to update the motor state info.
+        """
         if self._control_state == ControlMode.DUTY_CYCLE:
             self._canman.comm_can_set_duty(self.ID, self._command.duty)
         elif self._control_state == ControlMode.CURRENT_LOOP:
@@ -424,37 +223,70 @@ class CubeMarsServoCAN:
         self._last_command_time = time.time()
 
     def power_on(self) -> None:
+        """Powers on the motor."""
         self._canman.power_on(self.ID)
         self._updated = True
 
     def power_off(self) -> None:
+        """Powers off the motor."""
         self._canman.power_off(self.ID)
 
     def set_zero_position(self) -> None:
+        """Zeros the position"""
         self._canman.comm_can_set_origin(self.ID, 1)
         self._last_command_time = time.time()
 
     # --- Getters ---
 
     def get_temperature_celsius(self) -> float:
+        """
+        Returns:
+            The most recently updated motor temperature in degrees C.
+        """
         return self._motor_state.temperature
 
     def get_motor_error_code(self) -> int:
+        """
+        Returns:
+            The most recently updated motor error code.
+            Note the program should throw a runtime error before you get a chance to read
+            this value if it is ever anything besides 0.
+        """
         return self._motor_state.error
 
     def get_current_qaxis_amps(self) -> float:
+        """
+        Returns:
+            The most recently updated qaxis current in amps
+        """
         return self._motor_state.current
 
     def get_output_angle_radians(self) -> float:
+        """
+        Returns:
+            The most recently updated output angle in radians
+        """
         return self._motor_state.position * self.rad_per_Eang
 
     def get_output_velocity_radians_per_second(self) -> float:
+        """
+        Returns:
+            The most recently updated output velocity in radians per second
+        """
         return self._motor_state.velocity * self.radps_per_ERPM
 
     def get_output_acceleration_radians_per_second_squared(self) -> float:
+        """
+        Returns:
+            The most recently updated output acceleration in radians per second per second
+        """
         return self._motor_state.acceleration
 
     def get_output_torque_newton_meters(self) -> float:
+        """
+        Returns:
+            the most recently updated output torque in Nm
+        """
         return (
             self.get_current_qaxis_amps()
             * self.config.Kt_actual
@@ -464,24 +296,45 @@ class CubeMarsServoCAN:
     # --- Mode Setters ---
 
     def enter_duty_cycle_control(self) -> None:
+        """
+        Must call this to enable sending duty cycle commands.
+        """
         self._control_state = ControlMode.DUTY_CYCLE
 
     def enter_current_control(self) -> None:
+        """
+        Must call this to enable sending current commands.
+        """
         self._control_state = ControlMode.CURRENT_LOOP
 
     def enter_current_brake_control(self) -> None:
+        """
+        Must call this to enable sending current brake commands.
+        """
         self._control_state = ControlMode.CURRENT_BRAKE
 
     def enter_velocity_control(self) -> None:
+        """
+        Must call this to enable sending velocity commands.
+        """
         self._control_state = ControlMode.VELOCITY
 
     def enter_position_control(self) -> None:
+        """
+        Must call this to enable position commands.
+        """
         self._control_state = ControlMode.POSITION
 
     def enter_position_velocity_control(self) -> None:
+        """
+        Must call this to enable sending position commands with specified velocity and accleration limits.
+        """
         self._control_state = ControlMode.POSITION_VELOCITY
 
     def enter_idle_mode(self) -> None:
+        """
+        Enter the idle state, where duty cycle is set to 0. (This is the default state.)
+        """
         self._control_state = ControlMode.IDLE
 
     # --- Command Setters ---
@@ -489,6 +342,16 @@ class CubeMarsServoCAN:
     def set_output_angle_radians(
         self, pos: float, vel: float = 0.0, acc: float = 0.0
     ) -> None:
+        """
+        Update the current command to the desired position, when in position or position-velocity mode.
+        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
+        which will be sent when update() is called.
+
+        Args:
+            pos: The desired output angle in rad
+            vel: The desired speed to get there in rad/s (when in POSITION_VELOCITY mode)
+            acc: The desired acceleration to get there in rad/s/s, ish (when in POSITION_VELOCITY mode)
+        """
         if np.abs(pos) >= self.config.P_max:
             raise RuntimeError(
                 f"Cannot control using impedance mode for angles with magnitude greater than {self.config.P_max} rad!"
@@ -510,6 +373,14 @@ class CubeMarsServoCAN:
             )
 
     def set_duty_cycle_percent(self, duty: float) -> None:
+        """
+        Used for duty cycle mode, to set desired duty cycle.
+        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
+        which will be sent when update() is called.
+
+        Args:
+            duty: The desired duty cycle, (-1 to 1)
+        """
         if self._control_state != ControlMode.DUTY_CYCLE:
             raise RuntimeError(
                 f"Attempted to send duty cycle command without gains for device {self.device_info_string()}"
@@ -520,6 +391,14 @@ class CubeMarsServoCAN:
             self._command.duty = duty
 
     def set_output_velocity_radians_per_second(self, vel: float) -> None:
+        """
+        Used for velocity mode to set output velocity command.
+        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
+        which will be sent when update() is called.
+
+        Args:
+            vel: The desired output speed in rad/s
+        """
         if np.abs(vel) >= self.config.V_max:
             raise RuntimeError(
                 f"Cannot control using speed mode for velocities with magnitude greater than {self.config.V_max} rad/s!"
@@ -532,6 +411,14 @@ class CubeMarsServoCAN:
         self._command.velocity = vel / self.radps_per_ERPM
 
     def set_motor_current_qaxis_amps(self, current: float) -> None:
+        """
+        Used for current mode to set current command.
+        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
+        which will be sent when update() is called.
+
+        Args:
+            current: the desired current in amps.
+        """
         if self._control_state not in [
             ControlMode.CURRENT_LOOP,
             ControlMode.CURRENT_BRAKE,
@@ -542,6 +429,14 @@ class CubeMarsServoCAN:
         self._command.current = current
 
     def set_output_torque_newton_meters(self, torque: float) -> None:
+        """
+        Used for current mode to set current, based on desired torque.
+        If a more complicated torque model is available for the motor, that will be used.
+        Otherwise it will just use the motor's torque constant.
+
+        Args:
+            torque: The desired output torque in Nm.
+        """
         self.set_motor_current_qaxis_amps(
             torque / self.config.Kt_actual / self.config.GEAR_RATIO
         )
@@ -549,29 +444,72 @@ class CubeMarsServoCAN:
     # --- Motor-Side Wrappers ---
 
     def set_motor_torque_newton_meters(self, torque: float) -> None:
+        """
+        Wrapper of set_output_torque that accounts for gear ratio to control motor-side torque
+
+        Args:
+            torque: The desired motor-side torque in Nm.
+        """
         self.set_output_torque_newton_meters(torque * self.config.Kt_actual)
 
     def set_motor_angle_radians(self, pos: float) -> None:
+        """
+        Wrapper for set_output_angle that accounts for gear ratio to control motor-side angle
+
+        Args:
+            pos: The desired motor-side position in rad.
+        """
         self.set_output_angle_radians(pos / self.config.GEAR_RATIO, 0.0, 0.0)
 
     def set_motor_velocity_radians_per_second(self, vel: float) -> None:
+        """
+        Wrapper for set_output_velocity that accounts for gear ratio to control motor-side velocity
+
+        Args:
+            vel: The desired motor-side velocity in rad/s.
+        """
         self.set_output_velocity_radians_per_second(vel / self.config.GEAR_RATIO)
 
     def get_motor_angle_radians(self) -> float:
+        """
+        Wrapper for get_output_angle that accounts for gear ratio to get motor-side angle
+
+        Returns:
+            The most recently updated motor-side angle in rad.
+        """
         return self._motor_state.position * self.rad_per_Eang * self.config.GEAR_RATIO
 
     def get_motor_velocity_radians_per_second(self) -> float:
+        """
+        Wrapper for get_output_velocity that accounts for gear ratio to get motor-side velocity
+
+        Returns:
+            The most recently updated motor-side velocity in rad/s.
+        """
         return self._motor_state.velocity * self.config.GEAR_RATIO
 
     def get_motor_acceleration_radians_per_second_squared(self) -> float:
+        """
+        Wrapper for get_output_acceleration that accounts for gear ratio to get motor-side acceleration
+
+        Returns:
+            The most recently updated motor-side acceleration in rad/s/s.
+        """
         return self._motor_state.acceleration * self.config.GEAR_RATIO
 
     def get_motor_torque_newton_meters(self) -> float:
+        """
+        Wrapper for get_output_torque that accounts for gear ratio to get motor-side torque
+
+        Returns:
+            The most recently updated motor-side torque in Nm.
+        """
         return self.get_output_torque_newton_meters() * self.config.GEAR_RATIO
 
     # --- String Representations ---
 
     def __str__(self) -> str:
+        """Prints the motor's device info and current"""
         return (
             f"{self.device_info_string()} | "
             f"Position: {round(self.position, 3): 1f} rad | "
@@ -581,9 +519,17 @@ class CubeMarsServoCAN:
         )
 
     def device_info_string(self) -> str:
+        """Prints the motor's ID and device type."""
         return f"{self.type}  ID: {self.ID}"
 
     def check_can_connection(self) -> bool:
+        """
+        Checks the motor's connection by attempting to send 10 startup messages.
+        If it gets 10 replies, then the connection is confirmed.
+
+        Returns:
+            True if a connection is established and False otherwise.
+        """
         if not self._entered:
             raise RuntimeError(
                 "Tried to check_can_connection before entering motor control! Enter control using the __enter__ method, or instantiating the CubeMarsServoCAN in a with block."
