@@ -12,6 +12,7 @@ A simplified, robust, and modern Python library for controlling CubeMars AK-seri
 - **Zero Bloat:** Stripped of MIT mode and Serial control code to focus 100% on reliable Servo CAN operation.
 - **Modern Packaging:** Built with `uv` and `pyproject.toml` for fast, reliable dependency management.
 - **Advanced Configuration:** Safe defaults for AK-series motors with the ability to safely override parameters or define custom motors.
+- **Quality Gates:** Mock-based test suite with full source coverage (`src/cubemars_servo_can/*`).
 
 ---
 
@@ -31,24 +32,36 @@ For motor wiring and initial configuration (setting the servo mode and CAN ID) p
 
 ### 1. Install
 
-Install directly from the repository using `uv` (recommended) or `pip`:
+Install directly from the repository using `uv` or `pip`:
 
 ```bash
-# Using uv (Recommended)
+# Add as a dependency to your project (uv)
 uv add git+https://github.com/sam0rr/cubemars_servo_can.git
 
-# Using pip
+# Install into the current Python environment (pip)
 pip install git+https://github.com/sam0rr/cubemars_servo_can.git
 ```
 
 ---
 
+### 2. Run
+
+Use the usage guide for mode-by-mode examples:
+
+- [**Usage Guide**](docs/usage.md)
+
+---
+
 ### 3. Upgrade
 
-To update to the latest version of the library:
+Update to the latest repository version:
 
 ```bash
-uv lock --upgrade
+# If installed with pip:
+pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
+
+# If managed in a uv project dependency:
+uv add --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 ```
 
 ---
@@ -57,6 +70,8 @@ uv lock --upgrade
 
 - [**Usage Guide**](docs/usage.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 - [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
+- [**Changelog**](CHANGELOG.md): Release notes and validation summary.
+- [**Bug Fix Verification**](BUG_FIX_SUMMARY.md): Evidence-based bug register tied to tests.
 
 ---
 
@@ -107,7 +122,7 @@ The library includes a comprehensive test suite. Tests mock the CAN interface an
 **Run all tests (coverage is enabled by default in pyproject.toml):**
 
 ```bash
-uv run pytest
+uv run pytest -q
 ```
 
 ---

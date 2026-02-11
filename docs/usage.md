@@ -37,6 +37,15 @@ sudo uv run your_script.py
 
 You must explicitly enter a control mode before sending commands for that mode.
 
+| Mode API | Sent CAN Command |
+| --- | --- |
+| `enter_duty_cycle_control()` | `SET_DUTY` |
+| `enter_current_control()` | `SET_CURRENT` |
+| `enter_current_brake_control()` | `SET_CURRENT_BRAKE` |
+| `enter_velocity_control()` | `SET_RPM` |
+| `enter_position_control()` | `SET_POS` |
+| `enter_position_velocity_control()` | `SET_POS_SPD` |
+
 ### 1. Position Mode (Most Common)
 
 Moves the motor to a specific angle (in radians).
@@ -88,7 +97,19 @@ motor.set_output_angle_radians(3.14, 5.0, 10.0)
 motor.update()
 ```
 
-### 5. Duty Cycle Mode
+### 5. Current Brake Mode
+
+Applies brake current to hold position.
+
+```python
+motor.enter_current_brake_control()
+
+# Brake current must be non-negative
+motor.set_motor_current_qaxis_amps(2.0)
+motor.update()
+```
+
+### 6. Duty Cycle Mode
 
 Controls PWM directly. Mostly for testing.
 
@@ -98,13 +119,21 @@ motor.set_duty_cycle_percent(0.1) # 10% power
 motor.update()
 ```
 
-### 6. Zeroing
+### 7. Zeroing
 
 Sets the current physical position as the new "0" (origin).
 
 ```python
 motor.set_zero_position()
 ```
+
+## Safety and Limits
+
+- Position, velocity, current, and torque commands are checked against motor config limits.
+- Position-velocity mode validates target velocity and acceleration before frame packing.
+- Current brake mode rejects negative current values.
+- `update()` raises if temperature exceeds configured max.
+- `with CubeMarsServoCAN(...)` performs connection validation on entry.
 
 ## Telemetry (Reading State)
 

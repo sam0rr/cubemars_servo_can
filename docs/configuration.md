@@ -46,7 +46,9 @@ If you are using a motor not in the default list, you can define it completely.
 custom_motor_specs = {
     "P_min": -12.5, "P_max": 12.5,
     "V_min": -50.0, "V_max": 50.0,
-    "Curr_min": -10.0, "Curr_max": 10.0, # Safer limits
+    # Current limits are in centi-amps for compatibility with TMotorCANControl.
+    # Example: +/-1500 means +/-15.0A command range.
+    "Curr_min": -1500.0, "Curr_max": 1500.0,
     "T_min": -5.0, "T_max": 5.0,
     "Kt_TMotor": 0.1,
     "Current_Factor": 0.59,
@@ -69,7 +71,7 @@ with CubeMarsServoCAN(motor_type='Custom', config_overrides=custom_motor_specs) 
 | ---------------- | ------- | -------------------------------------------------------------------------- |
 | `P_min/max`      | `float` | Position limits. (Original library uses int32 mapping ~32000 to ~3200 deg) |
 | `V_min/max`      | `float` | Velocity limits in Electrical RPM.                                         |
-| `Curr_min/max`   | `float` | Current limits in Amps.                                                    |
+| `Curr_min/max`   | `float` | Current limits in centi-amps (e.g. `1500` = `15.0A`).                     |
 | `T_min/max`      | `float` | Torque limits in Nm.                                                       |
 | `Kt_TMotor`      | `float` | Torque constant from spec sheet.                                           |
 | `Kt_actual`      | `float` | Calibrated torque constant.                                                |
@@ -77,3 +79,8 @@ with CubeMarsServoCAN(motor_type='Custom', config_overrides=custom_motor_specs) 
 | `NUM_POLE_PAIRS` | `int`   | Number of pole pairs.                                                      |
 
 ---
+
+## Notes
+
+- The public API uses radians, rad/s, A, and Nm.
+- Internally, some wire/config compatibility fields follow original TMotor scaling conventions.
