@@ -8,7 +8,11 @@ This guide covers how to initialize the motor and use the various control modes 
 
 The library uses a context manager (`with` block) to safely handle the connection, power-on sequence, and shutdown.
 
-Recommended production flow: bring `can0` up at boot, then run the Python app as a normal user.
+Use one consistent non-`sudo` runtime flow:
+
+1. One-time host setup: grant `CAP_NET_ADMIN` to `ip`.
+2. Per-run app setup: call `CAN_Manager_servo.configure_socketcan(channel=..., bitrate=...)`.
+3. Run your app as a normal user.
 
 ### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
 
@@ -23,19 +27,13 @@ dtparam=spi=on
 dtoverlay=mcp2515-can0,oscillator=12000000,interrupt=25,spimaxfrequency=2000000
 ```
 
-Then configure `can0` (example):
+Reboot after editing `config.txt` so the overlay is applied:
 
 ```bash
-sudo ip link set can0 up type can bitrate 1000000
-sudo ip link set can0 txqueuelen 65536
+sudo reboot
 ```
 
-Running the Python app itself without `sudo` is supported once `can0` is already up.
-
-Use one of these patterns:
-
-- Preferred: configure `can0` at boot using a root-managed startup service or network config, then run your app as a normal user.
-- Advanced: grant `CAP_NET_ADMIN` to networking tools if you need non-root link setup at runtime:
+One-time capability setup for non-root link configuration:
 
 ```bash
 sudo apt install -y libcap2-bin iproute2
@@ -46,63 +44,32 @@ getcap "$IP_BIN"
 
 Security note: capability grants are host-level privileges. Review your system policy before using them.
 
-### Recommended Boot-Time `can0` Setup (systemd)
-
-Create `/etc/systemd/system/can0.service`:
-
-```ini
-[Unit]
-Description=Bring up SocketCAN can0
-After=network-pre.target
-Before=network.target
-Wants=network.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/sh -c 'ip link set can0 down || true'
-ExecStart=/bin/sh -c 'ip link set can0 up type can bitrate 1000000'
-ExecStart=/bin/sh -c 'ip link set can0 txqueuelen 65536'
-ExecStop=/bin/sh -c 'ip link set can0 down'
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and verify:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now can0.service
-ip -details link show can0
-```
-
-After this, your Python app should not call `configure_socketcan()` during normal runtime.
-
-### Optional Admin Helper
-
-`CAN_Manager_servo.configure_socketcan(...)` is still available for setup scripts and diagnostics.
-It requires `CAP_NET_ADMIN` and does not run `sudo` implicitly.
+### Runtime Setup
 
 ```python
 from cubemars_servo_can.can_manager import CAN_Manager_servo
 
+# Configure the interface your app will use (can0, can1, etc.).
 CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
 ```
 
 ### Application Example
 
 ```python
+from cubemars_servo_can.can_manager import CAN_Manager_servo
 from cubemars_servo_can import CubeMarsServoCAN
 import time
 
-# 1. Setup
-# Ensure 'can_channel' matches your interface (e.g., 'can0', 'vcan0')
-# Ensure 'motor_type' matches your hardware (AK80-9, AK10-9, etc.)
-with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as motor:
+can_channel = "can0"  # Change to can1, etc. if needed.
+
+# 1. Configure SocketCAN for this interface (requires setcap setup above).
+CAN_Manager_servo.configure_socketcan(channel=can_channel, bitrate=1_000_000)
+
+# 2. Start motor control
+with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel=can_channel) as motor:
     print("Motor Connected!")
 
-    # 2. Control Logic goes here
+    # 3. Control Logic goes here
     # ...
 
     time.sleep(1)
