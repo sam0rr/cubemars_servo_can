@@ -2,7 +2,7 @@
 
 A simplified, robust, and modern Python library for controlling CubeMars AK-series actuators (e.g., AK40-10) via CAN bus in Servo Mode.
 
-**This project is a streamlined fork/rewrite of the [TMotorCANControl](https://github.com/Umich-NASA-Big-Idea-Challenge/TMotorCANControl) library.**
+**This project is a streamlined fork/rewrite of the [TMotorCANControl](https://github.com/neurobionics/TMotorCANControl) library.**
 
 ## Why this exists?
 
@@ -118,4 +118,4 @@ uv run python your_script.py
 
 ## Credits
 
-Based on the work by the [Umich NASA Big Idea Challenge Team](https://github.com/Umich-NASA-Big-Idea-Challenge/TMotorCANControl).
+Based on the work by the [neurobionics](https://github.com/neurobionics/TMotorCANControl) team.
