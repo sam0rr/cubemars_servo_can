@@ -452,7 +452,7 @@ class CubeMarsServoCAN:
         Args:
             torque: The desired motor-side torque in Nm.
         """
-        self.set_output_torque_newton_meters(torque * self.config.Kt_actual)
+        self.set_output_torque_newton_meters(torque / self.config.GEAR_RATIO)
 
     def set_motor_angle_radians(self, pos: float) -> None:
         """
