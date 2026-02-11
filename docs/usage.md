@@ -21,6 +21,10 @@ This requires host permissions (`CAP_NET_ADMIN`). The library does not run `sudo
 
 ### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
 
+Reference board and vendor docs:
+
+- https://www.waveshare.com/wiki/RS485_CAN_HAT
+
 Configure overlays in `/boot/firmware/config.txt`:
 
 ```ini
@@ -36,7 +40,19 @@ sudo ifconfig can0 txqueuelen 65536
 sudo ifconfig can0 up
 ```
 
-For non-sudo app runtime, preconfigure `can0` at boot or grant capabilities to networking tools.
+Running the Python app itself without `sudo` is supported once `can0` is already up.
+
+Use one of these patterns:
+
+- Preferred: configure `can0` at boot using a root-managed startup service or network config, then run your app as a normal user.
+- Advanced: grant `CAP_NET_ADMIN` to networking tools if you need non-root link setup at runtime:
+
+```bash
+sudo setcap cap_net_admin+ep /sbin/ip
+sudo setcap cap_net_admin+ep /sbin/ifconfig
+```
+
+Security note: capability grants are host-level privileges. Review your system policy before using them.
 
 ```python
 from cubemars_servo_can import CubeMarsServoCAN

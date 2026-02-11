@@ -28,55 +28,9 @@ For motor wiring and initial configuration (setting the servo mode and CAN ID) p
 
 ### Raspberry Pi + Waveshare RS485 CAN HAT
 
-Reference board:
+Keep hardware bring-up details in one place:
 
-- https://www.waveshare.com/wiki/RS485_CAN_HAT
-
-1. Enable SPI and MCP2515 overlay in your boot config.
-   For Raspberry Pi OS Trixie this is usually `/boot/firmware/config.txt`:
-
-```ini
-dtparam=spi=on
-dtoverlay=mcp2515-can0,oscillator=12000000,interrupt=25,spimaxfrequency=2000000
-```
-
-2. Reboot:
-
-```bash
-sudo reboot
-```
-
-3. Bring up CAN interface manually (matches Waveshare commands):
-
-```bash
-sudo ip link set can0 up type can bitrate 1000000
-sudo ifconfig can0 txqueuelen 65536
-sudo ifconfig can0 up
-```
-
-4. Optional: configure socketcan from Python:
-
-```python
-from cubemars_servo_can.can_manager import CAN_Manager_servo
-CAN_Manager_servo.configure_socketcan(channel="can0", bitrate=1_000_000)
-```
-
-This requires host permissions (`CAP_NET_ADMIN`), and the library does not call `sudo` implicitly.
-
-### Running Your App Without `sudo`
-
-Adding a user to a group alone is usually not enough for CAN link setup; this is a Linux capability issue.
-
-Use one of these patterns:
-
-- Preferred: configure `can0` at boot with root-managed service/network config, then run app as normal user.
-- Advanced: grant capability to `ip` (and `ifconfig` if used):
-
-```bash
-sudo setcap cap_net_admin+ep /sbin/ip
-```
-
-After this, your user can configure the link without `sudo` (security tradeoff, review before use).
+- Full Raspberry/Waveshare setup, interface bring-up, and non-`sudo` runtime patterns: [Usage Guide](docs/usage.md#basic-initialization)
 
 ---
 
