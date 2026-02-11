@@ -6,44 +6,54 @@ from typing import Dict, Any, Optional
 class MotorConfig:
     """
     Configuration for a specific motor type.
+    All fields are mandatory to ensure safe operation.
     """
 
     # Position limits (rad or deg, depending on context)
-    # Original library sent these as int32, so -32000 corresponds to -3200 deg in some contexts
-    P_min: float = -32000.0  # -3200 deg
-    P_max: float = 32000.0  # 3200 deg
+    P_min: float
+    P_max: float
 
     # Velocity limits (RPM electrical speed or similar)
-    V_min: float = -32000.0  # -320000 rpm electrical speed
-    V_max: float = 32000.0  # 320000 rpm electrical speed
+    V_min: float
+    V_max: float
 
     # Current limits (Amps)
-    # Note: 60A is the actual hardware limit, but defaults are often set lower for safety
-    Curr_min: float = -1500.0
-    Curr_max: float = 1500.0
+    Curr_min: float
+    Curr_max: float
 
     # Torque limits (Nm)
-    T_min: float = -30.0  # NM
-    T_max: float = 30.0  # NM
+    T_min: float
+    T_max: float
 
     # Motor Constants
-    Kt_TMotor: float = 0.091  # from TMotor website (actually 1/Kvll)
-    Current_Factor: float = 0.59  # UNTESTED CONSTANT!
-    Kt_actual: float = 0.115  # UNTESTED CONSTANT!
+    Kt_TMotor: float
+    Current_Factor: float
+    Kt_actual: float
 
     # Gearbox and Pole Pairs
-    GEAR_RATIO: float = 9.0
-    NUM_POLE_PAIRS: int = 21
+    GEAR_RATIO: float
+    NUM_POLE_PAIRS: int
 
     # Usage flags
-    Use_derived_torque_constants: bool = False  # true if you have a better model
+    Use_derived_torque_constants: bool
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MotorConfig":
         """
-        Create a config object from a dictionary, filtering out unknown keys.
+        Create a config object from a dictionary.
+        Raises TypeError or KeyError if required fields are missing.
         """
+        # Filter strictly for known fields, but then allow standard dataclass validation
+        # to raise errors if anything is missing.
         known_fields = cls.__annotations__.keys()
+
+        # Check for missing keys
+        missing = [key for key in known_fields if key not in data]
+        if missing:
+            raise ValueError(
+                f"Invalid Motor Configuration. Missing required fields: {missing}"
+            )
+
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
         return cls(**filtered_data)
 
@@ -52,14 +62,14 @@ class MotorConfig:
 # Values are taken from the original TMotorCANControl library
 DEFAULTS: Dict[str, Dict[str, Any]] = {
     "AK10-9": {
-        "P_min": -32000,  # -3200 deg
-        "P_max": 32000,  # 3200 deg
-        "V_min": -100000,  # -100000 rpm electrical speed
-        "V_max": 100000,  # 100000 rpm electrical speed
-        "Curr_min": -1500,  # -60A is the acutal limit but set to -15A
-        "Curr_max": 1500,  # 60A is the acutal limit but set to 15A
-        "T_min": -15,  # NM
-        "T_max": 15,  # NM
+        "P_min": -32000.0,  # -3200 deg
+        "P_max": 32000.0,  # 3200 deg
+        "V_min": -100000.0,  # -100000 rpm electrical speed
+        "V_max": 100000.0,  # 100000 rpm electrical speed
+        "Curr_min": -1500.0,  # -60A is the acutal limit but set to -15A
+        "Curr_max": 1500.0,  # 60A is the acutal limit but set to 15A
+        "T_min": -15.0,  # NM
+        "T_max": 15.0,  # NM
         "Kt_TMotor": 0.16,  # from TMotor website (actually 1/Kvll)
         "Current_Factor": 0.59,  # UNTESTED CONSTANT!
         "Kt_actual": 0.206,  # UNTESTED CONSTANT!
@@ -68,14 +78,14 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "Use_derived_torque_constants": False,  # true if you have a better model
     },
     "AK80-9": {
-        "P_min": -32000,  # -3200 deg
-        "P_max": 32000,  # 3200 deg
-        "V_min": -32000,  # -320000 rpm electrical speed
-        "V_max": 32000,  # 320000 rpm electrical speed
-        "Curr_min": -1500,  # -60A is the acutal limit but set to -15A
-        "Curr_max": 1500,  # 60A is the acutal limit but set to 15A
-        "T_min": -30,  # NM
-        "T_max": 30,  # NM
+        "P_min": -32000.0,  # -3200 deg
+        "P_max": 32000.0,  # 3200 deg
+        "V_min": -32000.0,  # -320000 rpm electrical speed
+        "V_max": 32000.0,  # 320000 rpm electrical speed
+        "Curr_min": -1500.0,  # -60A is the acutal limit but set to -15A
+        "Curr_max": 1500.0,  # 60A is the acutal limit but set to 15A
+        "T_min": -30.0,  # NM
+        "T_max": 30.0,  # NM
         "Kt_TMotor": 0.091,  # from TMotor website (actually 1/Kvll)
         "Current_Factor": 0.59,
         "Kt_actual": 0.115,
@@ -84,12 +94,12 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "Use_derived_torque_constants": False,  # true if you have a better model
     },
     "AK40-10": {
-        "P_min": -32000,  # -3200 deg
-        "P_max": 32000,  # 3200 deg
-        "V_min": -60000,  # -60000 rpm electrical speed
-        "V_max": 60000,  # 60000 rpm electrical speed
-        "Curr_min": -1500,  # -15A safe limit
-        "Curr_max": 1500,  # 15A safe limit
+        "P_min": -32000.0,  # -3200 deg
+        "P_max": 32000.0,  # 3200 deg
+        "V_min": -60000.0,  # -60000 rpm electrical speed
+        "V_max": 60000.0,  # 60000 rpm electrical speed
+        "Curr_min": -1500.0,  # -15A safe limit
+        "Curr_max": 1500.0,  # 15A safe limit
         "T_min": -19.6,  # NM
         "T_max": 19.6,  # NM
         "Kt_TMotor": 0.056,  # from TMotor website (actually 1/Kvll)
@@ -115,9 +125,21 @@ def get_motor_config(
 
     Returns:
         A MotorConfig object.
+
+    Raises:
+        ValueError: If the motor type is unknown and no valid custom config is provided,
+                    or if the resulting configuration is missing required fields.
     """
-    # Start with the default config for the type, or an empty dict if unknown
-    base_data = DEFAULTS.get(motor_type, {}).copy()
+    # Start with the default config for the type
+    if motor_type in DEFAULTS:
+        base_data = DEFAULTS[motor_type].copy()
+    elif custom_config:
+        # If it's a new motor type, start empty and rely on custom_config to fill ALL fields
+        base_data = {}
+    else:
+        raise ValueError(
+            f"Unknown motor type '{motor_type}' and no custom config provided."
+        )
 
     # Apply overrides if provided
     if custom_config:
