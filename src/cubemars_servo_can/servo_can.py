@@ -387,7 +387,9 @@ class CubeMarsServoCAN:
             )
         else:
             if np.abs(duty) > 1:
-                raise RuntimeError("Duty cycle cannot be greater than 100%!")
+                raise RuntimeError(
+                    "Cannot control using duty cycle mode for duty cycles greater than 100%!"
+                )
             self._command.duty = duty
 
     def set_output_velocity_radians_per_second(self, vel: float) -> None:
@@ -401,7 +403,7 @@ class CubeMarsServoCAN:
         """
         if np.abs(vel) >= self.config.V_max:
             raise RuntimeError(
-                f"Cannot control using speed mode for velocities with magnitude greater than {self.config.V_max} rad/s!"
+                f"Cannot control using speed mode for angles with magnitude greater than {self.config.V_max} rad/s!"
             )
 
         if self._control_state != ControlMode.VELOCITY:
