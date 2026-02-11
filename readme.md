@@ -74,6 +74,14 @@ with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can0') as mo
 sudo uv run main.py
 ```
 
+### 3. Upgrade
+
+To update to the latest version of the library:
+
+```bash
+uv lock --upgrade
+```
+
 ## Project Structure
 
 The library uses a modern `src-layout` for robustness:
