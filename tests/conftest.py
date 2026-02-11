@@ -1,4 +1,5 @@
 import pytest
+import gc
 from unittest.mock import patch
 
 
@@ -19,6 +20,8 @@ def reset_can_manager_singleton():
             instance = CAN_Manager_servo._instance
             CAN_Manager_servo._instance = None
             del instance
+            # Force garbage collection while mock is still active
+            gc.collect()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -32,3 +35,4 @@ def cleanup_session():
 
         if CAN_Manager_servo._instance is not None:
             CAN_Manager_servo._instance = None
+        gc.collect()
