@@ -10,31 +10,46 @@ class MotorConfig:
     """
 
     # Position limits (rad or deg, depending on context)
+    # The original library uses int32 for position, where 32000 corresponds to ~3200 degrees.
+    # Note: These values are checked against the absolute value of the position command.
     P_min: float
     P_max: float
 
     # Velocity limits (RPM electrical speed or similar)
+    # The original library uses these values to clamp velocity commands.
+    # Electrical RPM = Mechanical RPM * Pole Pairs
     V_min: float
     V_max: float
 
     # Current limits (Amps)
+    # Note: The controller typically has a hard limit (e.g. 60A), but these software limits
+    # are set lower for safety (e.g. 15A).
+    # Checked against the command current.
     Curr_min: float
     Curr_max: float
 
     # Torque limits (Nm)
+    # Used to clamp torque commands.
     T_min: float
     T_max: float
 
     # Motor Constants
+    # Kt_TMotor: Torque constant provided by T-Motor website (actually 1/Kvll)
+    # Current_Factor: Calibration factor for current control (Default: 0.59)
+    # Kt_actual: The actual torque constant used for calculations
     Kt_TMotor: float
     Current_Factor: float
     Kt_actual: float
 
     # Gearbox and Pole Pairs
+    # GEAR_RATIO: The mechanical gear reduction ratio (e.g. 9 for 9:1 reduction)
+    # NUM_POLE_PAIRS: Number of magnet pole pairs in the rotor
     GEAR_RATIO: float
     NUM_POLE_PAIRS: int
 
     # Usage flags
+    # Use_derived_torque_constants: Set to True if you have a better model for torque calculation.
+    # Default is False (uses simple Kt * Current model).
     Use_derived_torque_constants: bool
 
     @classmethod
