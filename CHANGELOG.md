@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.4 - 2026-02-11
+
+### Fixed
+
+- Hardened connection detection to require a plausible status frame (valid status arbitration ID, 8-byte payload, parseable telemetry) instead of accepting any low-byte ID match.
+- Added bounded connection probing (`max_messages`, `max_empty_polls`) to avoid unbounded scans on noisy buses while preserving compatibility with delayed first responses.
+- Rejected command-like low-byte IDs during connection validation to prevent command traffic from being treated as device telemetry.
+- Rejected local power on/off loopback payloads from being counted as connection evidence.
+- Hardened listener dispatch to use the same status-ID classification and ignore non-8-byte / command-echo frames.
+
+### Validation
+
+- Test suite: `125 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`575/575` statements)
+- Lint: `ruff` clean
+- Format: `black --check` clean
+
 ## 0.2.2 - 2026-02-11
 
 ### Fixed

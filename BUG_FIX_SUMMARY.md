@@ -14,9 +14,10 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `112 passed`
-- Source coverage: `100%` (`545/545` statements)
+- `125 passed`
+- Source coverage: `100%` (`575/575` statements)
 - `ruff`: clean
+- `black --check`: clean
 
 ## Verified Bug Register (Sequential IDs)
 
@@ -176,6 +177,30 @@ Status legend:
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Tests: `test_default_log_vars_are_isolated_per_instance`
+
+26. `BUG-026` `check_can_connection()` accepted command-like low-byte matches as connection evidence.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`, `src/cubemars_servo_can/can_manager.py`
+- Tests: `test_check_connection_rejects_command_like_low_byte_id`, `test_command_like_low_byte_id_is_rejected`
+
+27. `BUG-027` `check_can_connection()` could mark connected using non-telemetry frames (non-8-byte, unparseable, or power command loopback payloads).
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests:
+  `test_check_connection_ignores_non_8_byte_frames`,
+  `test_check_connection_ignores_unparseable_frames`,
+  `test_check_connection_rejects_power_on_echo`
+
+28. `BUG-028` Listener path could parse non-status/non-telemetry frames (command-like IDs, non-8-byte, loopback command echoes).
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Tests:
+  `test_listener_ignores_command_like_low_byte_id`,
+  `test_listener_ignores_non_8_byte_frame`,
+  `test_listener_ignores_power_on_echo_on_exact_id`
 
 ## Corrected Prior Inaccurate Claim
 

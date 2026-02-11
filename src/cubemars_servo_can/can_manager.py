@@ -34,14 +34,25 @@ class MotorListener(can.Listener):
         Args:
             msg: A python-can CAN message
         """
+        if not self.canman.is_status_arbitration_id(msg.arbitration_id, self.motor.ID):
+            return
+
         data = bytes(msg.data)
-        ID = msg.arbitration_id & 0x00000FF
-        if ID == self.motor.ID:
-            try:
-                self.motor._update_state_async(self.canman.parse_servo_message(data))
-            except Exception as exc:
-                # Keep listener thread alive and surface the error on the control thread.
-                self.motor._set_listener_error(exc)
+        if len(data) != 8:
+            return
+
+        # Ignore local command loopback frames on exact ID.
+        if msg.arbitration_id == self.motor.ID and data in (
+            bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC]),
+            bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD]),
+        ):
+            return
+
+        try:
+            self.motor._update_state_async(self.canman.parse_servo_message(data))
+        except Exception as exc:
+            # Keep listener thread alive and surface the error on the control thread.
+            self.motor._set_listener_error(exc)
 
 
 class CAN_Manager_servo(object):
@@ -66,6 +77,24 @@ class CAN_Manager_servo(object):
     notifier: can.Notifier
     _listeners: Dict[int, MotorListener]
     _closed: bool
+
+    @staticmethod
+    def is_status_arbitration_id(arbitration_id: int, motor_id: int) -> bool:
+        """
+        Return True for IDs that are plausible status frames for a motor.
+
+        Compatibility:
+        - Some stacks emit status frames with arbitration ID equal to motor ID.
+        - Others include a packet discriminator in upper bits while keeping motor ID in the low byte.
+        """
+        if arbitration_id == motor_id:
+            return True
+
+        if (arbitration_id & 0x000000FF) != motor_id:
+            return False
+
+        packet_id = (arbitration_id >> 8) & 0xFF
+        return packet_id not in CAN_PACKET_ID.values()
 
     def __new__(
         cls,

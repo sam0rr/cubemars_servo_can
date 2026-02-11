@@ -231,7 +231,7 @@ class TestMotorListener:
 
         listener = MotorListener(can_manager, motor)
         msg = MagicMock()
-        msg.arbitration_id = 0x305  # lower byte = 0x05
+        msg.arbitration_id = 0x905  # lower byte = 0x05, non-command packet id
         msg.data = bytes([0] * 8)
 
         listener.on_message_received(msg)
@@ -251,6 +251,52 @@ class TestMotorListener:
         listener.on_message_received(msg)
         motor._update_state_async.assert_not_called()
 
+    def test_listener_ignores_command_like_low_byte_id(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
+        motor = MagicMock()
+        motor.ID = 5
+        listener = MotorListener(can_manager, motor)
+        msg = MagicMock()
+        msg.arbitration_id = 0x305  # lower byte match, packet id 0x03 (SET_RPM command)
+        msg.data = bytes([0] * 8)
+
+        listener.on_message_received(msg)
+        motor._update_state_async.assert_not_called()
+        can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_listener_ignores_non_8_byte_frame(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
+        motor = MagicMock()
+        motor.ID = 5
+        listener = MotorListener(can_manager, motor)
+        msg = MagicMock()
+        msg.arbitration_id = 0x005
+        msg.data = bytes([0] * 7)
+
+        listener.on_message_received(msg)
+        motor._update_state_async.assert_not_called()
+        can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_listener_ignores_power_on_echo_on_exact_id(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
+        motor = MagicMock()
+        motor.ID = 1
+        listener = MotorListener(can_manager, motor)
+        msg = MagicMock()
+        msg.arbitration_id = 0x001
+        msg.data = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC])
+
+        listener.on_message_received(msg)
+        motor._update_state_async.assert_not_called()
+        can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
+
     def test_listener_surfaces_parse_errors_to_motor(
         self, mock_can: Dict[str, Any]
     ) -> None:
@@ -262,11 +308,25 @@ class TestMotorListener:
         listener = MotorListener(can_manager, motor)
 
         msg = MagicMock()
-        msg.arbitration_id = 0x301  # lower byte = 0x01
+        msg.arbitration_id = 0x001
         msg.data = bytes([0] * 8)
 
         listener.on_message_received(msg)
         motor._set_listener_error.assert_called_once()
+
+
+class TestStatusIdClassification:
+    def test_exact_motor_id_is_accepted(self) -> None:
+        assert CAN_Manager_servo.is_status_arbitration_id(0x001, 0x001) is True
+
+    def test_compatible_non_command_low_byte_id_is_accepted(self) -> None:
+        assert CAN_Manager_servo.is_status_arbitration_id(0x901, 0x001) is True
+
+    def test_command_like_low_byte_id_is_rejected(self) -> None:
+        assert CAN_Manager_servo.is_status_arbitration_id(0x601, 0x001) is False
+
+    def test_wrong_low_byte_id_is_rejected(self) -> None:
+        assert CAN_Manager_servo.is_status_arbitration_id(0x902, 0x001) is False
 
 
 class TestDebugBranches:

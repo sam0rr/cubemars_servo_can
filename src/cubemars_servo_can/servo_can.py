@@ -616,6 +616,10 @@ class CubeMarsServoCAN:
         self._canman.notifier.add_listener(listener)
         try:
             start_time = time.time()
+            max_messages = 200
+            max_empty_polls = 100
+            power_on_echo = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC])
+            power_off_echo = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD])
             for i in range(3):
                 self.power_on()
                 time.sleep(0.001)
@@ -623,23 +627,47 @@ class CubeMarsServoCAN:
             # Wait for responses
             time.sleep(0.05)
 
-            # Check if we got any messages from this motor
-            msg_count = 0
-            while True:
+            # Check for one plausible, parseable status frame from this motor.
+            messages_checked = 0
+            empty_polls = 0
+            while messages_checked < max_messages and empty_polls < max_empty_polls:
                 msg = listener.get_message(timeout=0.01)
                 if msg is None:
-                    break
+                    empty_polls += 1
+                    continue
+                empty_polls = 0
+                messages_checked += 1
                 msg_timestamp = getattr(msg, "timestamp", None)
                 if (
                     isinstance(msg_timestamp, (int, float))
                     and msg_timestamp < start_time
                 ):
                     continue
-                # Check if message is from this motor
-                if (msg.arbitration_id & 0x00000FF) == self.ID:
-                    msg_count += 1
 
-            return msg_count > 0
+                if not self._canman.is_status_arbitration_id(
+                    msg.arbitration_id, self.ID
+                ):
+                    continue
+
+                data = bytes(msg.data)
+                if len(data) != 8:
+                    continue
+
+                # Exclude looped-back command payloads on exact ID.
+                if msg.arbitration_id == self.ID and data in (
+                    power_on_echo,
+                    power_off_echo,
+                ):
+                    continue
+
+                try:
+                    self._canman.parse_servo_message(data)
+                except Exception:
+                    continue
+
+                return True
+
+            return False
         finally:
             self._canman.notifier.remove_listener(listener)
 
