@@ -88,6 +88,11 @@ class CAN_Manager_servo(object):
             cls._instance.notifier = can.Notifier(bus=cls._instance.bus, listeners=[])
             print("Connected on: " + str(cls._instance.bus))
 
+        elif channel != cls._instance.channel:
+            raise RuntimeError(
+                f"CAN manager already initialized on '{cls._instance.channel}', cannot reinitialize on '{channel}'"
+            )
+
         return cls._instance
 
     def __init__(self, channel: str = "can0") -> None:
@@ -140,6 +145,9 @@ class CAN_Manager_servo(object):
         except can.CanError as e:
             if self.debug:
                 print(f"    Message NOT sent: {e}")
+            raise RuntimeError(
+                f"Failed to send CAN message to motor {motor_id}: {e}"
+            ) from e
 
     def power_on(self, motor_id: int) -> None:
         """
@@ -301,6 +309,11 @@ class CAN_Manager_servo(object):
         Returns:
             A ServoMotorState object representing the state based on the data received.
         """
+        if len(data) != 8:
+            raise ValueError(
+                f"Servo status frame must be exactly 8 bytes, got {len(data)}"
+            )
+
         # using numpy to convert signed/unsigned integers
         pos_int = np.int16(data[0] << 8 | data[1])
         spd_int = np.int16(data[2] << 8 | data[3])

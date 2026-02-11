@@ -285,7 +285,7 @@ class CubeMarsServoCAN:
         Returns:
             The most recently updated output acceleration in radians per second per second
         """
-        return self._motor_state.acceleration
+        return self._motor_state.acceleration * self.radps_per_ERPM
 
     def get_output_torque_newton_meters(self) -> float:
         """
@@ -366,10 +366,24 @@ class CubeMarsServoCAN:
             )
 
         pos = pos / self.rad_per_Eang
-        vel = vel / self.radps_per_ERPM
-        acc = acc / self.radps_per_ERPM
 
         if self._control_state == ControlMode.POSITION_VELOCITY:
+            v_max_rad_s = self.config.V_max * self.radps_per_ERPM
+            if np.abs(vel) >= v_max_rad_s:
+                raise RuntimeError(
+                    f"Cannot use position-velocity mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
+                )
+
+            vel = vel / self.radps_per_ERPM
+            acc = acc / self.radps_per_ERPM
+            if not -32768 <= int(vel) <= 32767:
+                raise RuntimeError(
+                    f"Position-velocity mode speed command {vel} ERPM is outside int16 range"
+                )
+            if not -32768 <= int(acc) <= 32767:
+                raise RuntimeError(
+                    f"Position-velocity mode acceleration command {acc} ERPM/s is outside int16 range"
+                )
             self._command.position = pos
             self._command.velocity = vel
             self._command.acceleration = acc
@@ -438,6 +452,8 @@ class CubeMarsServoCAN:
             raise RuntimeError(
                 f"Attempted to send current command before entering current mode for device {self.device_info_string()}"
             )
+        if self._control_state == ControlMode.CURRENT_BRAKE and current < 0:
+            raise RuntimeError("Current brake mode requires non-negative current.")
         # Enforce current limits (convert from scaled values in config)
         if not (self.config.Curr_min / 100 <= current <= self.config.Curr_max / 100):
             raise RuntimeError(
@@ -518,7 +534,11 @@ class CubeMarsServoCAN:
         Returns:
             The most recently updated motor-side acceleration in rad/s/s.
         """
-        return self._motor_state.acceleration * self.config.GEAR_RATIO
+        return (
+            self._motor_state.acceleration
+            * self.radps_per_ERPM
+            * self.config.GEAR_RATIO
+        )
 
     def get_motor_torque_newton_meters(self) -> float:
         """
@@ -527,7 +547,7 @@ class CubeMarsServoCAN:
         Returns:
             The most recently updated motor-side torque in Nm.
         """
-        return self.get_output_torque_newton_meters() * self.config.GEAR_RATIO
+        return self.get_output_torque_newton_meters() / self.config.GEAR_RATIO
 
     # --- String Representations ---
 

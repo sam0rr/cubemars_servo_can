@@ -157,6 +157,55 @@ class TestControlModes:
         assert message.arbitration_id == 0x001
         assert len(message.data) == 4
 
+    def test_current_brake_mode_sends_correct_command(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that current brake mode sends correctly formatted CAN message."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_brake_control()
+
+        motor.set_motor_current_qaxis_amps(5.0)
+        motor.update()
+
+        message = get_last_message(mock_can)
+        # SET_CURRENT_BRAKE = 2, so expected: 1 | (2 << 8) = 0x201
+        assert message.arbitration_id == 0x201
+        assert len(message.data) == 4
+
+    def test_position_velocity_mode_sends_correct_command(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that position-velocity mode sends a full 8-byte command frame."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_velocity_control()
+
+        target_pos = 1.0
+        target_vel = 5.0
+        target_acc = 10.0
+        motor.set_output_angle_radians(target_pos, target_vel, target_acc)
+        motor.update()
+
+        message = get_last_message(mock_can)
+        # SET_POS_SPD = 6, so expected: 1 | (6 << 8) = 0x601
+        assert message.arbitration_id == 0x601
+        assert len(message.data) == 8
+
+        import struct
+
+        pos_raw = struct.unpack(">i", bytes(message.data[0:4]))[0]
+        vel_raw = struct.unpack(">h", bytes(message.data[4:6]))[0]
+        acc_raw = struct.unpack(">h", bytes(message.data[6:8]))[0]
+
+        expected_pos_raw = int((target_pos / motor.rad_per_Eang) * 10000.0)
+        expected_vel_raw = int(target_vel / motor.radps_per_ERPM)
+        expected_acc_raw = int(target_acc / motor.radps_per_ERPM)
+
+        assert pos_raw == expected_pos_raw
+        assert vel_raw == expected_vel_raw
+        assert acc_raw == expected_acc_raw
+
 
 class TestSafetyLimits:
     """Tests for safety limits and error handling."""
@@ -433,6 +482,53 @@ class TestTorqueFormula:
         assert abs(current_int - expected_current) < 10
 
 
+class TestTorqueGetterUnits:
+    """Tests for motor/output torque getters."""
+
+    def test_motor_torque_getter_divides_by_gear_ratio(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Motor-side torque should not include gear ratio amplification."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        # Motor torque = Iq * Kt_actual
+        motor._motor_state.current = 10.0
+        expected_motor_torque = 10.0 * motor.config.Kt_actual
+        expected_output_torque = expected_motor_torque * motor.config.GEAR_RATIO
+
+        assert motor.get_output_torque_newton_meters() == pytest.approx(
+            expected_output_torque
+        )
+        assert motor.get_motor_torque_newton_meters() == pytest.approx(
+            expected_motor_torque
+        )
+
+
+class TestAccelerationUnitConversion:
+    """Tests for acceleration unit conversion."""
+
+    def test_acceleration_getters_convert_erpm_per_second(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Acceleration from telemetry is ERPM/s and must be converted to rad/s^2."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor._motor_state.acceleration = 1000.0  # ERPM/s
+
+        expected_output_acc = 1000.0 * motor.radps_per_ERPM
+        expected_motor_acc = expected_output_acc * motor.config.GEAR_RATIO
+
+        assert (
+            motor.get_output_acceleration_radians_per_second_squared()
+            == pytest.approx(expected_output_acc)
+        )
+        assert (
+            motor.get_motor_acceleration_radians_per_second_squared()
+            == pytest.approx(expected_motor_acc)
+        )
+
+
 class TestCurrentLimits:
     """Tests for current limit enforcement."""
 
@@ -454,6 +550,54 @@ class TestCurrentLimits:
 
         # Should not raise error (within 15A limit)
         motor.set_motor_current_qaxis_amps(10.0)
+
+
+class TestCurrentBrakeMode:
+    """Tests specific to current brake mode semantics."""
+
+    def test_negative_brake_current_rejected(self, mock_can: Dict[str, Any]) -> None:
+        """Brake mode should reject negative current commands."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_brake_control()
+
+        with pytest.raises(RuntimeError, match="requires non-negative current"):
+            motor.set_motor_current_qaxis_amps(-1.0)
+
+    def test_non_negative_brake_current_allowed(self, mock_can: Dict[str, Any]) -> None:
+        """Brake mode should allow non-negative current within limits."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_current_brake_control()
+        motor.set_motor_current_qaxis_amps(5.0)
+
+
+class TestPositionVelocityModeLimits:
+    """Tests for position-velocity command limit checks."""
+
+    def test_position_velocity_rejects_speed_beyond_limit(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Velocity limit checks should apply in position-velocity mode too."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_velocity_control()
+
+        v_max_rad_s = motor.config.V_max * motor.radps_per_ERPM
+        with pytest.raises(RuntimeError, match="position-velocity mode for velocity"):
+            motor.set_output_angle_radians(1.0, v_max_rad_s + 0.1, 1.0)
+
+    def test_position_velocity_rejects_acceleration_int16_overflow(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Acceleration must fit the int16 field used by the CAN frame."""
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_velocity_control()
+
+        # Converts to ERPM/s far above int16 range.
+        with pytest.raises(RuntimeError, match="outside int16 range"):
+            motor.set_output_angle_radians(1.0, 1.0, 1e6)
 
 
 class TestTorqueLimits:

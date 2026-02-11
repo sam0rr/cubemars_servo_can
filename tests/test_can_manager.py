@@ -102,3 +102,45 @@ class TestStateParsing:
         assert state.current == 5.0  # 500 * 0.01
         assert state.temperature == 40.0
         assert state.error == 0
+
+    @pytest.mark.parametrize("frame_len", [7, 9])
+    def test_parse_servo_message_invalid_length_raises(
+        self, mock_can: Dict[str, Any], frame_len: int
+    ) -> None:
+        """Servo status frames must be exactly 8 bytes."""
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        data = bytes([0x00] * frame_len)
+
+        with pytest.raises(ValueError, match="exactly 8 bytes"):
+            can_manager.parse_servo_message(data)
+
+
+class TestCanErrorHandling:
+    """Tests for CAN send error behavior."""
+
+    def test_send_servo_message_raises_runtime_error_on_can_error(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """CAN send failures should raise RuntimeError and not fail silently."""
+        can_manager = CAN_Manager_servo(channel="vcan0")
+
+        class DummyCanError(Exception):
+            pass
+
+        mock_can["can"].CanError = DummyCanError
+        mock_can["bus"].send.side_effect = DummyCanError("send failed")
+
+        with pytest.raises(RuntimeError, match="Failed to send CAN message"):
+            can_manager.send_servo_message(motor_id=1, data=[0x01], data_len=0)
+
+
+class TestSingletonBehavior:
+    """Tests for singleton channel consistency."""
+
+    def test_reinitializing_on_different_channel_raises(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """A singleton initialized on one channel must not silently switch channels."""
+        CAN_Manager_servo(channel="vcan0")
+        with pytest.raises(RuntimeError, match="already initialized"):
+            CAN_Manager_servo(channel="can0")

@@ -4,7 +4,9 @@ from cubemars_servo_can.utils import (
     buffer_append_int16,
     buffer_append_uint16,
     buffer_append_int32,
+    buffer_append_uint32,
     buffer_append_int64,
+    buffer_append_uint64,
 )
 
 
@@ -40,6 +42,20 @@ def test_buffer_append_int64() -> None:
     # 0x112210F47DE98115
     buffer_append_int64(buffer, val)
     assert buffer == [0x11, 0x22, 0x10, 0xF4, 0x7D, 0xE9, 0x81, 0x15]
+
+
+def test_buffer_append_uint32() -> None:
+    buffer: List[int] = []
+    val: int = 0xDEADBEEF
+    buffer_append_uint32(buffer, val)
+    assert buffer == [0xDE, 0xAD, 0xBE, 0xEF]
+
+
+def test_buffer_append_uint64() -> None:
+    buffer: List[int] = []
+    val: int = 0xFEDCBA9876543210
+    buffer_append_uint64(buffer, val)
+    assert buffer == [0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10]
 
 
 # Integer overflow protection tests
@@ -84,3 +100,39 @@ def test_int32_valid_range() -> None:
     buffer_append_int32(buffer, 1000000)  # Within range
     assert len(buffer) == 4
     assert buffer == [0x00, 0x0F, 0x42, 0x40]  # 1000000 in big-endian
+
+
+def test_uint32_overflow_raises_error() -> None:
+    """Test that uint32 overflow raises ValueError."""
+    with pytest.raises(ValueError, match="out of uint32 range"):
+        buffer_append_uint32([], 5000000000)
+
+
+def test_uint32_negative_raises_error() -> None:
+    """Test that negative uint32 input raises ValueError."""
+    with pytest.raises(ValueError, match="out of uint32 range"):
+        buffer_append_uint32([], -1)
+
+
+def test_int64_overflow_raises_error() -> None:
+    """Test that int64 overflow raises ValueError."""
+    with pytest.raises(ValueError, match="out of int64 range"):
+        buffer_append_int64([], 2**63)
+
+
+def test_int64_underflow_raises_error() -> None:
+    """Test that int64 underflow raises ValueError."""
+    with pytest.raises(ValueError, match="out of int64 range"):
+        buffer_append_int64([], -(2**63) - 1)
+
+
+def test_uint64_overflow_raises_error() -> None:
+    """Test that uint64 overflow raises ValueError."""
+    with pytest.raises(ValueError, match="out of uint64 range"):
+        buffer_append_uint64([], 2**64)
+
+
+def test_uint64_negative_raises_error() -> None:
+    """Test that negative uint64 input raises ValueError."""
+    with pytest.raises(ValueError, match="out of uint64 range"):
+        buffer_append_uint64([], -1)
