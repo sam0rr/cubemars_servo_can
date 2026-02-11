@@ -104,10 +104,10 @@ To contribute to this library:
 
 The library includes a comprehensive test suite. Tests mock the CAN interface and do not require physical hardware or `sudo` privileges.
 
-**Run all tests (it will tell you the coverage cause we set it in the pyproject.toml):**
+**Run all tests (coverage is enabled by default in pyproject.toml):**
 
 ```bash
-uv run pytest -v
+uv run pytest
 ```
 
 ---
