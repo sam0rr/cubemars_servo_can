@@ -1,17 +1,16 @@
 import pytest
+from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
-from cubemars_servo_can.can_manager import CAN_Manager_servo
-from cubemars_servo_can.constants import ControlMode
 
 
 @pytest.fixture
-def mock_can():
+def mock_can() -> Generator[Dict[str, Any], None, None]:
     """Fixture that mocks CAN bus interface."""
     with patch("cubemars_servo_can.can_manager.can") as mock_can_lib:
         # Setup mock bus and notifier
-        mock_bus = MagicMock()
-        mock_notifier = MagicMock()
+        mock_bus: MagicMock = MagicMock()
+        mock_notifier: MagicMock = MagicMock()
 
         mock_can_lib.interface.Bus.return_value = mock_bus
         mock_can_lib.Notifier.return_value = mock_notifier
@@ -23,9 +22,9 @@ def mock_can():
         }
 
 
-def test_initialization(mock_can):
+def test_initialization(mock_can: Dict[str, Any]) -> None:
     # Should not raise
-    motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, can_channel="vcan0")
+    CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, can_channel="vcan0")
 
     # Check if bus was created
     mock_can["can"].interface.Bus.assert_called_with(
@@ -33,8 +32,8 @@ def test_initialization(mock_can):
     )
 
 
-def test_enter_exit_context(mock_can):
-    motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+def test_enter_exit_context(mock_can: Dict[str, Any]) -> None:
+    motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
     # Mock check_can_connection to return True immediately to avoid delays/errors
     with patch.object(motor, "check_can_connection", return_value=True):
@@ -50,8 +49,8 @@ def test_enter_exit_context(mock_can):
     assert mock_can["bus"].send.call_count >= 2
 
 
-def test_send_position_command(mock_can):
-    motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+def test_send_position_command(mock_can: Dict[str, Any]) -> None:
+    motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
     # Mock internals to simulate entered state
     motor._entered = True
@@ -63,14 +62,14 @@ def test_send_position_command(mock_can):
     motor.update()
 
     # Verify a message was sent
-    args, _ = mock_can["bus"].send.call_args
-    message = args[0]
+    args: tuple = mock_can["bus"].send.call_args[0]
+    message: Any = args[0]
 
     assert message.arbitration_id is not None
 
 
-def test_safety_limits(mock_can):
-    motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+def test_safety_limits(mock_can: Dict[str, Any]) -> None:
+    motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
     motor._entered = True
     motor.enter_position_control()
 
