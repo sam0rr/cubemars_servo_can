@@ -690,6 +690,16 @@ class TestErrorHandling:
         with pytest.raises(RuntimeError, match="Over temperature fault"):
             motor.update()
 
+    def test_listener_error_raised_on_update_thread(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        motor._set_listener_error(ValueError("bad frame"))
+        with pytest.raises(RuntimeError, match="CAN listener error"):
+            motor.update()
+
 
 class TestContextManagerAndUpdateBranches:
     """Tests for context manager, CSV logging, and update error paths."""

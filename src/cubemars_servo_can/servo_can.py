@@ -176,6 +176,15 @@ class CubeMarsServoCAN:
         self._motor_state_async.acceleration = acceleration
         self._updated = True
 
+    def _set_listener_error(self, exc: Exception) -> None:
+        """
+        Store listener-thread errors to be raised on the next user-thread update() call.
+        """
+        self._async_error = RuntimeError(
+            f"CAN listener error for device: {self.device_info_string()}: {exc}"
+        )
+        self._updated = True
+
     def update(self) -> None:
         """
         This method is called by the user to synchronize the current state used by the controller/logger

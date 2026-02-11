@@ -1,5 +1,5 @@
 import can
-import numpy as np
+import struct
 from typing import List, Optional, TYPE_CHECKING, Dict
 
 from .constants import CAN_PACKET_ID
@@ -37,7 +37,11 @@ class MotorListener(can.Listener):
         data = bytes(msg.data)
         ID = msg.arbitration_id & 0x00000FF
         if ID == self.motor.ID:
-            self.motor._update_state_async(self.canman.parse_servo_message(data))
+            try:
+                self.motor._update_state_async(self.canman.parse_servo_message(data))
+            except Exception as exc:
+                # Keep listener thread alive and surface the error on the control thread.
+                self.motor._set_listener_error(exc)
 
 
 class CAN_Manager_servo(object):
@@ -82,7 +86,9 @@ class CAN_Manager_servo(object):
 
             # Create a python-can bus object
             try:
-                cls._instance.bus = can.interface.Bus(channel=channel, bustype="socketcan")
+                cls._instance.bus = can.interface.Bus(
+                    channel=channel, bustype="socketcan"
+                )
             except Exception as e:
                 # Reset singleton on initialization failure so subsequent attempts can retry cleanly.
                 cls._instance = None
@@ -357,15 +363,14 @@ class CAN_Manager_servo(object):
                 f"Servo status frame must be exactly 8 bytes, got {len(data)}"
             )
 
-        # using numpy to convert signed/unsigned integers
-        pos_int = np.int16(data[0] << 8 | data[1])
-        spd_int = np.int16(data[2] << 8 | data[3])
-        cur_int = np.int16(data[4] << 8 | data[5])
+        pos_int, spd_int, cur_int, motor_temp_raw, motor_error = struct.unpack(
+            ">hhhBB", data
+        )
         motor_pos = float(pos_int * 0.1)  # motor position
         motor_spd = float(spd_int * 10.0)  # motor speed
         motor_cur = float(cur_int * 0.01)  # motor current
-        motor_temp = float(np.uint8(data[6]))  # motor temperature (unsigned 8-bit)
-        motor_error = int(data[7])  # motor error mode
+        motor_temp = float(motor_temp_raw)  # motor temperature (unsigned byte)
+        motor_error = int(motor_error)  # motor error mode
 
         if self.debug:
             print(f"  Position: {motor_pos}")

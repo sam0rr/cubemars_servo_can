@@ -104,6 +104,45 @@ class TestStateParsing:
         assert state.temperature == 40.0
         assert state.error == 0
 
+    def test_parse_servo_message_signed_fields(self, mock_can: Dict[str, Any]) -> None:
+        """Signed int16 fields should decode without overflow on all supported Python versions."""
+        can_manager = CAN_Manager_servo(channel="vcan0")
+
+        # pos=-0.2 deg_elec (0xFFFE * 0.1), vel=-10.0 ERPM*10 (0xFFFF * 10), cur=-0.03A (0xFFFD * 0.01)
+        data = bytes([0xFF, 0xFE, 0xFF, 0xFF, 0xFF, 0xFD, 0x19, 0x00])
+        state = can_manager.parse_servo_message(data)
+
+        assert state.position == -0.2
+        assert state.velocity == -10.0
+        assert state.current == -0.03
+        assert state.temperature == 25.0
+        assert state.error == 0
+
+    @pytest.mark.parametrize(
+        "raw_hi,raw_lo,expected",
+        [
+            (0x7F, 0xFF, 32767),
+            (0x80, 0x00, -32768),
+            (0xFF, 0xFF, -1),
+        ],
+    )
+    def test_parse_servo_message_int16_edge_values(
+        self,
+        mock_can: Dict[str, Any],
+        raw_hi: int,
+        raw_lo: int,
+        expected: int,
+    ) -> None:
+        """Signed 16-bit edge values should decode correctly and never overflow."""
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        data = bytes([raw_hi, raw_lo, raw_hi, raw_lo, raw_hi, raw_lo, 0x00, 0x00])
+
+        state = can_manager.parse_servo_message(data)
+
+        assert state.position == expected * 0.1
+        assert state.velocity == expected * 10.0
+        assert state.current == expected * 0.01
+
     @pytest.mark.parametrize("frame_len", [7, 9])
     def test_parse_servo_message_invalid_length_raises(
         self, mock_can: Dict[str, Any], frame_len: int
@@ -188,6 +227,23 @@ class TestMotorListener:
 
         listener.on_message_received(msg)
         motor._update_state_async.assert_not_called()
+
+    def test_listener_surfaces_parse_errors_to_motor(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        can_manager.parse_servo_message = MagicMock(side_effect=ValueError("bad frame"))  # type: ignore[method-assign]
+
+        motor = MagicMock()
+        motor.ID = 1
+        listener = MotorListener(can_manager, motor)
+
+        msg = MagicMock()
+        msg.arbitration_id = 0x301  # lower byte = 0x01
+        msg.data = bytes([0] * 8)
+
+        listener.on_message_received(msg)
+        motor._set_listener_error.assert_called_once()
 
 
 class TestDebugBranches:
@@ -275,4 +331,3 @@ class TestRemovedRuntimeConfiguration:
 
     def test_configure_socketcan_api_removed(self) -> None:
         assert not hasattr(CAN_Manager_servo, "configure_socketcan")
-
