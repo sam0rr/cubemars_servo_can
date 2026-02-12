@@ -236,6 +236,38 @@ Status legend:
   `test_velocity_limit_accepts_exact_max`,
   `test_velocity_limit_clamps_tiny_overage`
 
+33. `BUG-033` Context-manager soft stop remains too abrupt on real inertia/load, causing residual vibration at shutdown.
+
+- Status: `planned`
+- Code target: `src/cubemars_servo_can/servo_can.py`
+- Issue detail:
+  Current best-effort shutdown ramp is short (~40ms in velocity mode), then `power_off()` hard-cuts drive. This can still generate mechanical jerk and audible/structural vibration on geared systems.
+- Proposed solution:
+  Add a configurable soft-stop profile in `CubeMarsServoCAN.__exit__`:
+  (1) longer deceleration window with more ramp steps, (2) optional final `CURRENT_BRAKE` hold phase (bounded current + bounded duration), then (3) `power_off()`.
+  Include safe defaults and user-tunable parameters.
+- Planned validation:
+  Add regression tests for command sequencing and timing behavior in shutdown path (velocity ramp profile, brake phase insertion, and final power-off ordering).
+- Target window:
+  Week of 2026-02-16.
+
+34. `BUG-034` Over-temperature debounce can still allow motion commands during early hot samples, leading to start-then-abrupt-stop behavior and vibration.
+
+- Status: `planned`
+- Code target: `src/cubemars_servo_can/servo_can.py`
+- Issue detail:
+  With `overtemp_trip_count > 1`, the controller currently keeps sending user commands until the trip threshold is reached. On a hot motor, this can produce short motion bursts followed by forced stop, which feels abrupt and can excite vibration.
+- Proposed solution:
+  Add a pre-trip thermal guard in `update()`:
+  (1) on first over-temp sample, suppress motion-producing commands immediately,
+  (2) send a safe hold profile (zero velocity/torque with optional bounded brake hold),
+  (3) keep raising hard fault once consecutive sample threshold is reached.
+  Add a clear recovery policy (cooldown/hysteresis or explicit re-arm) so behavior is deterministic.
+- Planned validation:
+  Add tests that verify no new movement command is emitted once temperature exceeds threshold, confirm safe-hold command path, and confirm trip-count fault semantics remain intact.
+- Target window:
+  Week of 2026-02-16.
+
 ## Corrected Prior Inaccurate Claim
 
 1. `CORR-001` Prior claim: temperature overflow at 127C due to `np.int16(data[6])`.
