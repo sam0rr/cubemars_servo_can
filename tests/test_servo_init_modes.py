@@ -50,8 +50,8 @@ class TestInitialization:
         ("kwargs", "match"),
         [
             (
-                {"thermal_guard_cooldown_hysteresis_c": -0.1},
-                "thermal_guard_cooldown_hysteresis_c must be >= 0",
+                {"cooldown_margin_c": -0.1},
+                "cooldown_margin_c must be >= 0",
             ),
             (
                 {"soft_stop_ramp_duration_s": -0.01},

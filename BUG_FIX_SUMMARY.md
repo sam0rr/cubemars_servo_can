@@ -260,7 +260,7 @@ Status legend:
   With `overtemp_trip_count > 1`, the controller currently keeps sending user commands until the trip threshold is reached. On a hot motor, this can produce short motion bursts followed by forced stop, which feels abrupt and can excite vibration.
 - Resolution:
   Added pre-trip thermal guard command suppression in `update()` plus deterministic cooldown hysteresis
-  (`thermal_guard_cooldown_hysteresis_c`) to avoid hot/cool chatter.
+  (`cooldown_margin_c`) to avoid hot/cool chatter.
   While guard is active, safe hold commands are emitted instead of user motion commands; hard fault still raises once trip count is met.
 - Tests:
   `test_update_pretrip_thermal_guard_suppresses_velocity_motion`,

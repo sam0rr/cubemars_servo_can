@@ -23,9 +23,9 @@ class CubeMarsServoCAN:
         self,
         motor_type: str = "AK80-9",
         motor_ID: int = 1,
-        max_mosfett_temp: float = 70.0,
+        max_mosfet_temp: float = 70.0,
         overtemp_trip_count: int = 3,
-        thermal_guard_cooldown_hysteresis_c: float = 2.0,
+        cooldown_margin_c: float = 2.0,
         soft_stop_ramp_duration_s: float = 0.12,
         soft_stop_ramp_steps: int = 8,
         soft_stop_brake_hold_current_amps: float = 0.0,
@@ -42,9 +42,9 @@ class CubeMarsServoCAN:
         Args:
             motor_type: The type of motor being controlled, ie AK80-9.
             motor_ID: The CAN ID of the motor.
-            max_mosfett_temp: temperature of the mosfett above which to throw an error, in Celsius
+            max_mosfet_temp: temperature of the mosfet above which to throw an error, in Celsius
             overtemp_trip_count: consecutive over-temperature samples required before raising.
-            thermal_guard_cooldown_hysteresis_c: cooldown hysteresis used to clear pre-trip thermal guard.
+            cooldown_margin_c: cooldown hysteresis used to clear pre-trip thermal guard.
             soft_stop_ramp_duration_s: total ramp-down duration during best-effort shutdown.
             soft_stop_ramp_steps: number of ramp steps during best-effort shutdown.
             soft_stop_brake_hold_current_amps: optional current-brake hold current after ramp-down.
@@ -56,8 +56,8 @@ class CubeMarsServoCAN:
         """
         if overtemp_trip_count < 1:
             raise ValueError("overtemp_trip_count must be >= 1")
-        if thermal_guard_cooldown_hysteresis_c < 0:
-            raise ValueError("thermal_guard_cooldown_hysteresis_c must be >= 0")
+        if cooldown_margin_c < 0:
+            raise ValueError("cooldown_margin_c must be >= 0")
         if soft_stop_ramp_duration_s < 0:
             raise ValueError("soft_stop_ramp_duration_s must be >= 0")
         if soft_stop_ramp_steps < 1:
@@ -72,11 +72,9 @@ class CubeMarsServoCAN:
         self.type = motor_type
         self.ID = motor_ID
         self.csv_file_name = CSV_file
-        self.max_temp = max_mosfett_temp
+        self.max_temp = max_mosfet_temp
         self.overtemp_trip_count = int(overtemp_trip_count)
-        self.thermal_guard_cooldown_hysteresis_c = float(
-            thermal_guard_cooldown_hysteresis_c
-        )
+        self.cooldown_margin_c = float(cooldown_margin_c)
         self.soft_stop_ramp_duration_s = float(soft_stop_ramp_duration_s)
         self.soft_stop_ramp_steps = int(soft_stop_ramp_steps)
         self.soft_stop_brake_hold_current_amps = float(
@@ -377,9 +375,7 @@ class CubeMarsServoCAN:
             self._thermal_guard_active = True
         else:
             self._overtemp_samples = 0
-            if current_temp <= (
-                self.max_temp - self.thermal_guard_cooldown_hysteresis_c
-            ):
+            if current_temp <= (self.max_temp - self.cooldown_margin_c):
                 self._thermal_guard_active = False
 
         if self._overtemp_samples >= self.overtemp_trip_count:

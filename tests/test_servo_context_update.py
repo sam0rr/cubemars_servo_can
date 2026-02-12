@@ -481,7 +481,7 @@ class TestContextManagerAndUpdateBranches:
             motor_type="AK80-9",
             motor_ID=1,
             overtemp_trip_count=3,
-            thermal_guard_cooldown_hysteresis_c=2.0,
+            cooldown_margin_c=2.0,
         )
         motor._entered = True
         motor.enter_velocity_control()

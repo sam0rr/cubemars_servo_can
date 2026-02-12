@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.9 - 2026-02-12
+
+### Changed
+
+- Renamed thermal guard cooldown parameter from `thermal_guard_cooldown_hysteresis_c` to `cooldown_margin_c`.
+- Renamed constructor parameter from `max_mosfett_temp` to `max_mosfet_temp` (typo fix).
+- Updated tests and docs to use the new names consistently.
+
+### Validation
+
+- Test suite: `168 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`723/723` statements)
+- Lint: `ruff` clean
+- Format: `black` clean on touched Python files
+
 ## 0.2.8 - 2026-02-12
 
 ### Changed
@@ -26,7 +41,7 @@
   ramp duration/steps plus optional bounded current-brake hold phase before `power_off()`.
 - Added pre-trip thermal guard behavior in `update()`:
   on first over-temperature sample, motion-producing commands are suppressed and safe hold commands are sent immediately.
-- Added deterministic thermal guard cooldown policy with configurable hysteresis (`thermal_guard_cooldown_hysteresis_c`) to avoid hot/cool chatter.
+- Added deterministic thermal guard cooldown policy with configurable hysteresis (`cooldown_margin_c`) to avoid hot/cool chatter.
 
 ### Validation
 
@@ -62,7 +77,7 @@
 
 ### Changed
 
-- Increased default `max_mosfett_temp` from `50.0` to `70.0`.
+- Increased default `max_mosfet_temp` from `50.0` to `70.0`.
 
 ### Validation
 
