@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.8 - 2026-02-12
+
+### Changed
+
+- Refactored the large servo integration test file into focused modules:
+  `test_servo_init_modes.py`, `test_servo_units_limits.py`,
+  `test_servo_connection_errors.py`, `test_servo_context_update.py`,
+  and `test_servo_misc.py`.
+- Centralized CAN mocking fixture in `tests/conftest.py` and removed duplicated fixture code from `test_can_manager.py`.
+- Updated repository structure docs and expanded runtime safety/fault behavior documentation, including thermal guard and configurable shutdown soft-stop/brake-hold options.
+
+### Validation
+
+- Test suite: `168 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`723/723` statements)
+- Lint: `ruff` clean
+- Format: `black` clean on touched Python files
+
 ## 0.2.7 - 2026-02-12
 
 ### Fixed

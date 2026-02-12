@@ -1,6 +1,27 @@
 import pytest
 import gc
-from typing import Generator
+from typing import Generator, Dict, Any
+from unittest.mock import MagicMock, patch
+
+
+@pytest.fixture
+def mock_can() -> Generator[Dict[str, Any], None, None]:
+    """Fixture that mocks python-can bus and notifier primitives."""
+    with patch("cubemars_servo_can.can_manager.can") as mock_can_lib:
+        mock_bus: MagicMock = MagicMock()
+        mock_notifier: MagicMock = MagicMock()
+
+        class MockMessage:
+            def __init__(self, arbitration_id=None, data=None, is_extended_id=False):
+                self.arbitration_id = arbitration_id
+                self.data = data if data is not None else []
+                self.is_extended_id = is_extended_id
+
+        mock_can_lib.Message.side_effect = MockMessage
+        mock_can_lib.interface.Bus.return_value = mock_bus
+        mock_can_lib.Notifier.return_value = mock_notifier
+
+        yield {"can": mock_can_lib, "bus": mock_bus, "notifier": mock_notifier}
 
 
 @pytest.fixture(autouse=True)

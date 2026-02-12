@@ -83,18 +83,35 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 
 ## Project Structure
 
-The library uses a modern `src-layout` for robustness:
+The repository uses a `src` layout with focused test modules:
 
 ```
-src/
-└── cubemars_servo_can/
-    ├── __init__.py      # Package entry point
-    ├── servo_can.py     # Main high-level API (CubeMarsServoCAN)
-    ├── can_manager.py   # Low-level CAN bus logic
-    ├── motor_state.py   # Telemetry data structures
-    ├── config.py        # Motor configuration & parameters
-    ├── constants.py     # Protocol constants & Error codes
-    └── utils.py         # Byte manipulation helpers
+.
+├── src/
+│   └── cubemars_servo_can/
+│       ├── __init__.py
+│       ├── servo_can.py
+│       ├── can_manager.py
+│       ├── motor_state.py
+│       ├── config.py
+│       ├── constants.py
+│       └── utils.py
+├── tests/
+│   ├── conftest.py
+│   ├── test_can_manager.py
+│   ├── test_config.py
+│   ├── test_motor_state.py
+│   ├── test_servo_init_modes.py
+│   ├── test_servo_units_limits.py
+│   ├── test_servo_connection_errors.py
+│   ├── test_servo_context_update.py
+│   ├── test_servo_misc.py
+│   └── test_utils.py
+├── docs/
+│   ├── usage.md
+│   └── configuration.md
+├── BUG_FIX_SUMMARY.md
+└── CHANGELOG.md
 ```
 
 ---

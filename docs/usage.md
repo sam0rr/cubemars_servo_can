@@ -204,13 +204,34 @@ motor.set_zero_position()
 - Position, velocity, current, and torque commands are checked against motor config limits.
 - Position-velocity mode validates target velocity and acceleration before frame packing.
 - Current brake mode rejects negative current values.
+- Command setters are strict: invalid ranges raise `RuntimeError` instead of being silently clamped.
 - `max_mosfett_temp` defaults to `70.0`.
-- `update()` raises if temperature exceeds configured max for `overtemp_trip_count` consecutive updates (default `3`).
-- While over-temperature pre-trip guard is active, `update()` sends safe hold commands (no new motion commands) until cooldown hysteresis clears.
+- `update()` raises after `overtemp_trip_count` consecutive over-limit samples (default `3`).
+- A pre-trip thermal guard activates on over-limit telemetry and sends conservative hold/zero commands until cooldown hysteresis clears.
+- Thermal guard clears only when temperature drops to `max_mosfett_temp - thermal_guard_cooldown_hysteresis_c`.
 - Motor faults reported from CAN listener are raised on the next `update()` call.
 - `with CubeMarsServoCAN(...)` performs connection validation on entry.
-- `__exit__` performs a configurable best-effort soft stop before `power_off()` using:
-  `soft_stop_ramp_duration_s`, `soft_stop_ramp_steps`, `soft_stop_brake_hold_current_amps`, and `soft_stop_brake_hold_duration_s`.
+- `__exit__` performs a configurable best-effort soft stop before `power_off()`.
+
+### Runtime Safety Options
+
+```python
+motor = CubeMarsServoCAN(
+    motor_type="AK80-9",
+    motor_ID=1,
+    overtemp_trip_count=3,
+    thermal_guard_cooldown_hysteresis_c=2.0,
+    soft_stop_ramp_duration_s=0.12,
+    soft_stop_ramp_steps=8,
+    soft_stop_brake_hold_current_amps=0.0,
+    soft_stop_brake_hold_duration_s=0.0,
+)
+```
+
+- `overtemp_trip_count`: consecutive over-limit samples required before hard trip.
+- `thermal_guard_cooldown_hysteresis_c`: cooldown margin required before guard releases.
+- `soft_stop_ramp_duration_s` and `soft_stop_ramp_steps`: shutdown ramp profile.
+- `soft_stop_brake_hold_current_amps` and `soft_stop_brake_hold_duration_s`: optional brake-hold phase after ramp.
 
 ## Telemetry (Reading State)
 

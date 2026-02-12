@@ -2,30 +2,10 @@
 
 import struct
 import pytest
-from typing import Generator, Dict, Any
+from typing import Dict, Any
 from unittest.mock import MagicMock, patch
 from cubemars_servo_can.can_manager import CAN_Manager_servo, MotorListener
 from cubemars_servo_can.motor_state import ServoMotorState
-
-
-@pytest.fixture
-def mock_can() -> Generator[Dict[str, Any], None, None]:
-    """Fixture that mocks CAN bus interface."""
-    with patch("cubemars_servo_can.can_manager.can") as mock_can_lib:
-        mock_bus: MagicMock = MagicMock()
-        mock_notifier: MagicMock = MagicMock()
-
-        class MockMessage:
-            def __init__(self, arbitration_id=None, data=None, is_extended_id=False):
-                self.arbitration_id = arbitration_id
-                self.data = data if data is not None else []
-                self.is_extended_id = is_extended_id
-
-        mock_can_lib.Message.side_effect = MockMessage
-        mock_can_lib.interface.Bus.return_value = mock_bus
-        mock_can_lib.Notifier.return_value = mock_notifier
-
-        yield {"can": mock_can_lib, "bus": mock_bus, "notifier": mock_notifier}
 
 
 class TestBufferOverflow:
