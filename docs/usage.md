@@ -206,9 +206,11 @@ motor.set_zero_position()
 - Current brake mode rejects negative current values.
 - `max_mosfett_temp` defaults to `70.0`.
 - `update()` raises if temperature exceeds configured max for `overtemp_trip_count` consecutive updates (default `3`).
+- While over-temperature pre-trip guard is active, `update()` sends safe hold commands (no new motion commands) until cooldown hysteresis clears.
 - Motor faults reported from CAN listener are raised on the next `update()` call.
 - `with CubeMarsServoCAN(...)` performs connection validation on entry.
-- `__exit__` performs a best-effort soft stop before `power_off()` to reduce abrupt shutdown jerk.
+- `__exit__` performs a configurable best-effort soft stop before `power_off()` using:
+  `soft_stop_ramp_duration_s`, `soft_stop_ramp_steps`, `soft_stop_brake_hold_current_amps`, and `soft_stop_brake_hold_duration_s`.
 
 ## Telemetry (Reading State)
 

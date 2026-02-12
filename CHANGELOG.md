@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.7 - 2026-02-12
+
+### Fixed
+
+- Added a configurable shutdown soft-stop profile in `CubeMarsServoCAN.__exit__`:
+  ramp duration/steps plus optional bounded current-brake hold phase before `power_off()`.
+- Added pre-trip thermal guard behavior in `update()`:
+  on first over-temperature sample, motion-producing commands are suppressed and safe hold commands are sent immediately.
+- Added deterministic thermal guard cooldown policy with configurable hysteresis (`thermal_guard_cooldown_hysteresis_c`) to avoid hot/cool chatter.
+
+### Validation
+
+- Test suite: `168 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`723/723` statements)
+- Lint: `ruff` clean
+- Format: `black` clean on touched files
+
 ## 0.2.6 - 2026-02-12
 
 ### Fixed

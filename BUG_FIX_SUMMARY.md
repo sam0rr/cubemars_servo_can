@@ -14,10 +14,10 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `147 passed`
-- Source coverage: `100%` (`633/633` statements)
+- `168 passed`
+- Source coverage: `100%` (`723/723` statements)
 - `ruff`: clean
-- `black --check`: touched files formatted; full check is unstable/hangs in this environment
+- `black`: clean on touched files
 
 ## Verified Bug Register (Sequential IDs)
 
@@ -225,8 +225,8 @@ Status legend:
   `test_exit_soft_stops_velocity_before_power_off`,
   `test_exit_soft_stops_position_before_power_off`,
   `test_exit_soft_stops_position_velocity_before_power_off`,
-  `test_soft_stop_duty_cycle_zeroes_and_sends_once`,
-  `test_soft_stop_current_modes_zero_and_send_once`
+  `test_soft_stop_duty_cycle_ramps_to_zero`,
+  `test_soft_stop_current_modes_ramp_to_zero`
 
 32. `BUG-032` Velocity limit check could reject exact boundary commands due to strict comparison / float edge effects.
 
@@ -238,35 +238,35 @@ Status legend:
 
 33. `BUG-033` Context-manager soft stop remains too abrupt on real inertia/load, causing residual vibration at shutdown.
 
-- Status: `planned`
-- Code target: `src/cubemars_servo_can/servo_can.py`
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
 - Issue detail:
   Current best-effort shutdown ramp is short (~40ms in velocity mode), then `power_off()` hard-cuts drive. This can still generate mechanical jerk and audible/structural vibration on geared systems.
-- Proposed solution:
-  Add a configurable soft-stop profile in `CubeMarsServoCAN.__exit__`:
-  (1) longer deceleration window with more ramp steps, (2) optional final `CURRENT_BRAKE` hold phase (bounded current + bounded duration), then (3) `power_off()`.
-  Include safe defaults and user-tunable parameters.
-- Planned validation:
-  Add regression tests for command sequencing and timing behavior in shutdown path (velocity ramp profile, brake phase insertion, and final power-off ordering).
-- Target window:
-  Week of 2026-02-16.
+- Resolution:
+  Added configurable shutdown soft-stop controls:
+  `soft_stop_ramp_duration_s`, `soft_stop_ramp_steps`,
+  `soft_stop_brake_hold_current_amps`, `soft_stop_brake_hold_duration_s`.
+  Shutdown now uses longer configurable ramp behavior and optional bounded current-brake hold before `power_off()`.
+- Tests:
+  `test_exit_soft_stops_velocity_before_power_off`,
+  `test_soft_stop_optional_brake_hold_sequence`,
+  `test_optional_brake_hold_noop_when_config_current_limit_is_zero`
 
 34. `BUG-034` Over-temperature debounce can still allow motion commands during early hot samples, leading to start-then-abrupt-stop behavior and vibration.
 
-- Status: `planned`
-- Code target: `src/cubemars_servo_can/servo_can.py`
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
 - Issue detail:
   With `overtemp_trip_count > 1`, the controller currently keeps sending user commands until the trip threshold is reached. On a hot motor, this can produce short motion bursts followed by forced stop, which feels abrupt and can excite vibration.
-- Proposed solution:
-  Add a pre-trip thermal guard in `update()`:
-  (1) on first over-temp sample, suppress motion-producing commands immediately,
-  (2) send a safe hold profile (zero velocity/torque with optional bounded brake hold),
-  (3) keep raising hard fault once consecutive sample threshold is reached.
-  Add a clear recovery policy (cooldown/hysteresis or explicit re-arm) so behavior is deterministic.
-- Planned validation:
-  Add tests that verify no new movement command is emitted once temperature exceeds threshold, confirm safe-hold command path, and confirm trip-count fault semantics remain intact.
-- Target window:
-  Week of 2026-02-16.
+- Resolution:
+  Added pre-trip thermal guard command suppression in `update()` plus deterministic cooldown hysteresis
+  (`thermal_guard_cooldown_hysteresis_c`) to avoid hot/cool chatter.
+  While guard is active, safe hold commands are emitted instead of user motion commands; hard fault still raises once trip count is met.
+- Tests:
+  `test_update_pretrip_thermal_guard_suppresses_velocity_motion`,
+  `test_update_pretrip_thermal_guard_holds_position_velocity_mode`,
+  `test_thermal_guard_requires_hysteresis_cooldown_to_clear`,
+  `test_send_thermal_guard_command_restores_user_command`
 
 35. `BUG-035` Position command packing used inconsistent scaling between `SET_POS` and `SET_POS_SPD`.
 

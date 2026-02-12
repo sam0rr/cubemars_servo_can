@@ -25,6 +25,11 @@ class CubeMarsServoCAN:
         motor_ID: int = 1,
         max_mosfett_temp: float = 70.0,
         overtemp_trip_count: int = 3,
+        thermal_guard_cooldown_hysteresis_c: float = 2.0,
+        soft_stop_ramp_duration_s: float = 0.12,
+        soft_stop_ramp_steps: int = 8,
+        soft_stop_brake_hold_current_amps: float = 0.0,
+        soft_stop_brake_hold_duration_s: float = 0.0,
         CSV_file: Optional[str] = None,
         log_vars: Optional[List[str]] = None,
         can_channel: str = "can0",
@@ -39,6 +44,11 @@ class CubeMarsServoCAN:
             motor_ID: The CAN ID of the motor.
             max_mosfett_temp: temperature of the mosfett above which to throw an error, in Celsius
             overtemp_trip_count: consecutive over-temperature samples required before raising.
+            thermal_guard_cooldown_hysteresis_c: cooldown hysteresis used to clear pre-trip thermal guard.
+            soft_stop_ramp_duration_s: total ramp-down duration during best-effort shutdown.
+            soft_stop_ramp_steps: number of ramp steps during best-effort shutdown.
+            soft_stop_brake_hold_current_amps: optional current-brake hold current after ramp-down.
+            soft_stop_brake_hold_duration_s: optional current-brake hold duration after ramp-down.
             CSV_file: A CSV file to output log info to. If None, no log will be recorded.
             log_vars: The variables to log as a python list.
             can_channel: The CAN channel to use (default "can0")
@@ -46,12 +56,33 @@ class CubeMarsServoCAN:
         """
         if overtemp_trip_count < 1:
             raise ValueError("overtemp_trip_count must be >= 1")
+        if thermal_guard_cooldown_hysteresis_c < 0:
+            raise ValueError("thermal_guard_cooldown_hysteresis_c must be >= 0")
+        if soft_stop_ramp_duration_s < 0:
+            raise ValueError("soft_stop_ramp_duration_s must be >= 0")
+        if soft_stop_ramp_steps < 1:
+            raise ValueError("soft_stop_ramp_steps must be >= 1")
+        if soft_stop_brake_hold_current_amps < 0:
+            raise ValueError("soft_stop_brake_hold_current_amps must be >= 0")
+        if soft_stop_brake_hold_current_amps > 60:
+            raise ValueError("soft_stop_brake_hold_current_amps must be <= 60")
+        if soft_stop_brake_hold_duration_s < 0:
+            raise ValueError("soft_stop_brake_hold_duration_s must be >= 0")
 
         self.type = motor_type
         self.ID = motor_ID
         self.csv_file_name = CSV_file
         self.max_temp = max_mosfett_temp
         self.overtemp_trip_count = int(overtemp_trip_count)
+        self.thermal_guard_cooldown_hysteresis_c = float(
+            thermal_guard_cooldown_hysteresis_c
+        )
+        self.soft_stop_ramp_duration_s = float(soft_stop_ramp_duration_s)
+        self.soft_stop_ramp_steps = int(soft_stop_ramp_steps)
+        self.soft_stop_brake_hold_current_amps = float(
+            soft_stop_brake_hold_current_amps
+        )
+        self.soft_stop_brake_hold_duration_s = float(soft_stop_brake_hold_duration_s)
 
         # Load Configuration
         self.config: MotorConfig = get_motor_config(motor_type, config_overrides)
@@ -74,6 +105,7 @@ class CubeMarsServoCAN:
         self._command_sent = False
         self._async_error: Optional[RuntimeError] = None
         self._overtemp_samples = 0
+        self._thermal_guard_active = False
 
         self.log_vars = list(DEFAULT_LOG_VARIABLES if log_vars is None else log_vars)
         self.LOG_FUNCTIONS = {
@@ -133,6 +165,7 @@ class CubeMarsServoCAN:
             self._entered = False
             self._async_error = None
             self._overtemp_samples = 0
+            self._thermal_guard_active = False
             if self.csv_file is not None:
                 self.csv_file.close()
                 self.csv_file = None
@@ -147,61 +180,120 @@ class CubeMarsServoCAN:
         if not self._entered:
             return
 
+        step_delay_s = self.soft_stop_ramp_duration_s / float(self.soft_stop_ramp_steps)
+        scales = [
+            1.0 - (step / float(self.soft_stop_ramp_steps))
+            for step in range(1, self.soft_stop_ramp_steps + 1)
+        ]
+
         try:
             if self._control_state == ControlMode.VELOCITY:
                 initial_velocity = float(self._command.velocity)
-                for scale in (0.75, 0.5, 0.25, 0.0):
+                for scale in scales:
                     self._command.velocity = initial_velocity * scale
                     self._send_command()
-                    time.sleep(0.01)
+                    time.sleep(step_delay_s)
             elif self._control_state == ControlMode.POSITION:
                 # Hold the current measured angle if available; otherwise hold current target.
-                if self._last_update_time > self._start_time:
-                    hold_output_angle = (
-                        self._motor_state_async.position
-                        * self.rad_per_Eang
-                        / self.config.GEAR_RATIO
-                    )
-                else:
-                    hold_output_angle = self._command.position * self.rad_per_Eang
+                hold_output_angle = self._get_hold_output_angle_radians()
                 try:
                     self.set_output_angle_radians(hold_output_angle)
                 except Exception:
                     pass
-                for _ in range(3):
+                for _ in range(self.soft_stop_ramp_steps):
                     self._send_command()
-                    time.sleep(0.01)
+                    time.sleep(step_delay_s)
             elif self._control_state == ControlMode.POSITION_VELOCITY:
                 # Freeze at current measured angle (or current target) and zero profile limits.
-                if self._last_update_time > self._start_time:
-                    hold_output_angle = (
-                        self._motor_state_async.position
-                        * self.rad_per_Eang
-                        / self.config.GEAR_RATIO
-                    )
-                else:
-                    hold_output_angle = self._command.position * self.rad_per_Eang
+                hold_output_angle = self._get_hold_output_angle_radians()
                 try:
                     self.set_output_angle_radians(hold_output_angle, 0.0, 0.0)
                 except Exception:
                     pass
-                for _ in range(3):
+                for _ in range(self.soft_stop_ramp_steps):
                     self._send_command()
-                    time.sleep(0.01)
+                    time.sleep(step_delay_s)
+            elif self._control_state == ControlMode.DUTY_CYCLE:
+                initial_duty = float(self._command.duty)
+                for scale in scales:
+                    self._command.duty = initial_duty * scale
+                    self._send_command()
+                    time.sleep(step_delay_s)
+            elif self._control_state in (
+                ControlMode.CURRENT_LOOP,
+                ControlMode.CURRENT_BRAKE,
+            ):
+                initial_current = float(self._command.current)
+                for scale in scales:
+                    self._command.current = initial_current * scale
+                    self._send_command()
+                    time.sleep(step_delay_s)
+
+            self._run_optional_brake_hold(step_delay_s)
+        except Exception:
+            if self._control_state == ControlMode.VELOCITY:
+                self._command.velocity = 0.0
             elif self._control_state == ControlMode.DUTY_CYCLE:
                 self._command.duty = 0.0
-                self._send_command()
-                time.sleep(0.01)
             elif self._control_state in (
                 ControlMode.CURRENT_LOOP,
                 ControlMode.CURRENT_BRAKE,
             ):
                 self._command.current = 0.0
-                self._send_command()
-                time.sleep(0.01)
-        except Exception:
+            elif self._control_state == ControlMode.POSITION_VELOCITY:
+                self._command.velocity = 0.0
+                self._command.acceleration = 0.0
             # Never block shutdown flow if soft stop fails.
             pass
+
+    def _get_hold_output_angle_radians(self) -> float:
+        """
+        Return a conservative hold setpoint in output-side radians.
+        """
+        if self._last_update_time > self._start_time:
+            return (
+                self._motor_state_async.position
+                * self.rad_per_Eang
+                / self.config.GEAR_RATIO
+            )
+        return self._command.position * self.rad_per_Eang
+
+    def _run_optional_brake_hold(self, step_delay_s: float) -> None:
+        """
+        Optionally apply bounded current-brake hold before final power-off.
+        """
+        if (
+            self.soft_stop_brake_hold_duration_s <= 0
+            or self.soft_stop_brake_hold_current_amps <= 0
+        ):
+            return
+
+        hold_current = min(
+            self.soft_stop_brake_hold_current_amps, self.config.Curr_max / 100
+        )
+        if hold_current <= 0:
+            return
+
+        previous_state = self._control_state
+        previous_current = self._command.current
+
+        hold_dt = max(step_delay_s, 1e-3)
+        hold_steps = max(
+            1, int(math.ceil(self.soft_stop_brake_hold_duration_s / hold_dt))
+        )
+        per_step_sleep = self.soft_stop_brake_hold_duration_s / hold_steps
+
+        self._control_state = ControlMode.CURRENT_BRAKE
+        self._command.current = hold_current
+        for _ in range(hold_steps):
+            self._send_command()
+            time.sleep(per_step_sleep)
+
+        self._command.current = 0.0
+        self._send_command()
+        time.sleep(step_delay_s)
+        self._control_state = previous_state
+        self._command.current = previous_current
 
     def qaxis_current_to_TMotor_current(self, iq: float) -> float:
         """
@@ -279,10 +371,16 @@ class CubeMarsServoCAN:
         # Apply Gear Ratio to position
         self._motor_state.position = self._motor_state.position / self.config.GEAR_RATIO
 
-        if self.get_temperature_celsius() > self.max_temp:
+        current_temp = self.get_temperature_celsius()
+        if current_temp > self.max_temp:
             self._overtemp_samples += 1
+            self._thermal_guard_active = True
         else:
             self._overtemp_samples = 0
+            if current_temp <= (
+                self.max_temp - self.thermal_guard_cooldown_hysteresis_c
+            ):
+                self._thermal_guard_active = False
 
         if self._overtemp_samples >= self.overtemp_trip_count:
             raise RuntimeError(
@@ -300,7 +398,10 @@ class CubeMarsServoCAN:
         else:
             self._command_sent = False
 
-        self._send_command()
+        if self._thermal_guard_active:
+            self._send_thermal_guard_command()
+        else:
+            self._send_command()
 
         if self.csv_file is not None:
             self.csv_writer.writerow(
@@ -309,6 +410,44 @@ class CubeMarsServoCAN:
             )
 
         self._updated = False
+
+    def _send_thermal_guard_command(self) -> None:
+        """
+        Emit a non-motion command while pre-trip thermal guard is active.
+        """
+        previous_position = self._command.position
+        previous_velocity = self._command.velocity
+        previous_current = self._command.current
+        previous_duty = self._command.duty
+        previous_acceleration = self._command.acceleration
+
+        hold_position = self._motor_state_async.position
+        if self._last_update_time <= self._start_time:
+            hold_position = previous_position
+
+        try:
+            if self._control_state == ControlMode.DUTY_CYCLE:
+                self._command.duty = 0.0
+            elif self._control_state in (
+                ControlMode.CURRENT_LOOP,
+                ControlMode.CURRENT_BRAKE,
+            ):
+                self._command.current = 0.0
+            elif self._control_state == ControlMode.VELOCITY:
+                self._command.velocity = 0.0
+            elif self._control_state == ControlMode.POSITION:
+                self._command.position = hold_position
+            elif self._control_state == ControlMode.POSITION_VELOCITY:
+                self._command.position = hold_position
+                self._command.velocity = 0.0
+                self._command.acceleration = 0.0
+            self._send_command()
+        finally:
+            self._command.position = previous_position
+            self._command.velocity = previous_velocity
+            self._command.current = previous_current
+            self._command.duty = previous_duty
+            self._command.acceleration = previous_acceleration
 
     def _send_command(self) -> None:
         """
