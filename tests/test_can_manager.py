@@ -1,5 +1,6 @@
 """Tests for CAN manager functionality."""
 
+import struct
 import pytest
 from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
@@ -369,7 +370,7 @@ class TestDebugBranches:
         can_manager.debug = True
         can_manager.parse_servo_message(bytes([0x00, 0x01, 0, 0, 0, 0, 0x2A, 0x00]))
         out = capsys.readouterr().out
-        assert "Position:" in out
+        assert "Position (deg_elec):" in out
         assert "Temp:" in out
         can_manager.debug = False
 
@@ -383,6 +384,45 @@ class TestOriginCommand:
         message = mock_can["bus"].send.call_args[0][0]
         assert message.arbitration_id == 0x501
         assert message.data == [2]
+
+
+class TestCommandPacking:
+    def test_set_pos_and_set_pos_spd_share_position_scaling(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+        position = 123.456
+
+        can_manager.comm_can_set_pos(controller_id=1, pos=position)
+        pos_msg = mock_can["bus"].send.call_args_list[-1][0][0]
+
+        can_manager.comm_can_set_pos_spd(
+            controller_id=1, pos=position, spd=0.0, RPA=0.0
+        )
+        pos_spd_msg = mock_can["bus"].send.call_args_list[-1][0][0]
+
+        pos_raw = struct.unpack(">i", bytes(pos_msg.data))[0]
+        pos_spd_raw = struct.unpack(">i", bytes(pos_spd_msg.data[0:4]))[0]
+        expected = int(position * 10000.0)
+
+        assert pos_msg.arbitration_id == 0x401
+        assert pos_spd_msg.arbitration_id == 0x601
+        assert pos_raw == expected
+        assert pos_spd_raw == expected
+
+    def test_current_brake_rejects_negative_current(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+
+        with pytest.raises(ValueError, match="non-negative"):
+            can_manager.comm_can_set_cb(controller_id=1, current=-0.5)
+
+    def test_current_brake_rejects_over_60_amps(self, mock_can: Dict[str, Any]) -> None:
+        can_manager = CAN_Manager_servo(channel="vcan0")
+
+        with pytest.raises(ValueError, match="<= 60A"):
+            can_manager.comm_can_set_cb(controller_id=1, current=60.1)
 
 
 class TestListenerRegistrationLifecycle:

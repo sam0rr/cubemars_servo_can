@@ -315,6 +315,15 @@ class CAN_Manager_servo(object):
             controller_id: CAN ID of the motor to send the message to
             current: current in Amps to use (0 to 60)
         """
+        if current < 0:
+            raise ValueError(
+                f"Brake current must be non-negative in current brake mode, got {current}A"
+            )
+        if current > 60:
+            raise ValueError(
+                f"Brake current must be <= 60A in current brake mode, got {current}A"
+            )
+
         buffer: List[int] = []
         buffer_append_int32(buffer, int(current * 1000.0))
         self.send_servo_message(
@@ -347,10 +356,10 @@ class CAN_Manager_servo(object):
 
         Args:
             controller_id: CAN ID of the motor to send the message to
-            pos: desired position in degrees (sent as int32 * 1000000)
+            pos: desired position in electrical degrees (sent as int32 * 10000)
         """
         buffer: List[int] = []
-        buffer_append_int32(buffer, int(pos * 1000000.0))
+        buffer_append_int32(buffer, int(pos * 10000.0))
         self.send_servo_message(
             controller_id | (CAN_PACKET_ID["SET_POS"] << 8),
             buffer,
@@ -384,7 +393,7 @@ class CAN_Manager_servo(object):
 
         Args:
             controller_id: CAN ID of the motor to send the message to
-            pos: desired position
+            pos: desired position in electrical degrees (sent as int32 * 10000)
             spd: desired max speed in ERPM
             RPA: desired acceleration
         """
@@ -406,7 +415,8 @@ class CAN_Manager_servo(object):
             data: bytes of the message to be processed
 
         Returns:
-            A ServoMotorState object representing the state based on the data received.
+            A ServoMotorState object in raw servo telemetry units:
+            position (deg_elec), velocity (ERPM), current (A), temperature (C).
         """
         if len(data) != 8:
             raise ValueError(
@@ -416,16 +426,16 @@ class CAN_Manager_servo(object):
         pos_int, spd_int, cur_int, motor_temp_raw, motor_error = struct.unpack(
             ">hhhBB", data
         )
-        motor_pos = float(pos_int * 0.1)  # motor position
-        motor_spd = float(spd_int * 10.0)  # motor speed
-        motor_cur = float(cur_int * 0.01)  # motor current
+        motor_pos = float(pos_int * 0.1)  # electrical degrees
+        motor_spd = float(spd_int * 10.0)  # ERPM
+        motor_cur = float(cur_int * 0.01)  # amps
         motor_temp = float(motor_temp_raw)  # motor temperature (unsigned byte)
         motor_error = int(motor_error)  # motor error mode
 
         if self.debug:
-            print(f"  Position: {motor_pos}")
-            print(f"  Velocity: {motor_spd}")
-            print(f"  Current: {motor_cur}")
+            print(f"  Position (deg_elec): {motor_pos}")
+            print(f"  Velocity (ERPM): {motor_spd}")
+            print(f"  Current (A): {motor_cur}")
             print(f"  Temp: {motor_temp}")
             print(f"  Error: {motor_error}")
 

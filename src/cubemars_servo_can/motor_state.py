@@ -2,6 +2,7 @@ class ServoMotorState:
     """
     Data structure to store and update motor states.
     Stores the telemetry data received from the motor.
+    Values are kept in raw servo telemetry units and converted by higher-level getters.
     """
 
     def __init__(
@@ -17,12 +18,12 @@ class ServoMotorState:
         Sets the motor state to the input.
 
         Args:
-            position: Position in rad
-            velocity: Velocity in rad/s
+            position: Position in electrical degrees
+            velocity: Velocity in ERPM
             current: Current in amps
             temperature: Temperature in degrees C
             error: Error code, 0 means no error
-            acceleration: Acceleration in rad/s^2
+            acceleration: Acceleration in ERPM/s
         """
         self.set_state(position, velocity, current, temperature, error, acceleration)
 
@@ -39,12 +40,12 @@ class ServoMotorState:
         Sets the motor state to the input.
 
         Args:
-            position: Position in rad
-            velocity: Velocity in rad/s
+            position: Position in electrical degrees
+            velocity: Velocity in ERPM
             current: Current in amps
             temperature: Temperature in degrees C
             error: Error code, 0 means no error
-            acceleration: Acceleration in rad/s^2
+            acceleration: Acceleration in ERPM/s
         """
         self.position = position
         self.velocity = velocity

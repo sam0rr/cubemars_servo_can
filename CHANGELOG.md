@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.6 - 2026-02-12
+
+### Fixed
+
+- Aligned `SET_POS` command position scaling with `SET_POS_SPD` so both position paths encode `int32(position * 10000)`.
+- Enforced non-negative/upper-bounded current in low-level `comm_can_set_cb(...)` (`0..60A`) to match current-brake mode semantics.
+- Clarified raw telemetry units in parser and `ServoMotorState` docs (`deg_elec`, `ERPM`, `A`) to avoid unit confusion with public rad/rad-s getters.
+
+### Validation
+
+- Test suite: `147 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`633/633` statements)
+- Lint: `ruff` clean
+- Format: touched files formatted with `black` (full `black --check` is unstable/hangs in this environment)
+
 ## 0.2.5 - 2026-02-12
 
 ### Fixed

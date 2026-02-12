@@ -14,10 +14,10 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `144 passed`
-- Source coverage: `100%` (`629/629` statements)
+- `147 passed`
+- Source coverage: `100%` (`633/633` statements)
 - `ruff`: clean
-- `black --check`: clean
+- `black --check`: touched files formatted; full check is unstable/hangs in this environment
 
 ## Verified Bug Register (Sequential IDs)
 
@@ -267,6 +267,41 @@ Status legend:
   Add tests that verify no new movement command is emitted once temperature exceeds threshold, confirm safe-hold command path, and confirm trip-count fault semantics remain intact.
 - Target window:
   Week of 2026-02-16.
+
+35. `BUG-035` Position command packing used inconsistent scaling between `SET_POS` and `SET_POS_SPD`.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Issue detail:
+  `comm_can_set_pos()` used `int(pos * 1000000)` while `comm_can_set_pos_spd()` used `int(pos * 10000)`.
+  This mismatch could produce large position overshoot when switching between position modes.
+- Resolution:
+  Standardized both position command paths to `int32(position * 10000)`.
+- Tests:
+  `test_set_pos_and_set_pos_spd_share_position_scaling`,
+  `test_position_mode_sends_correct_command`
+
+36. `BUG-036` Low-level current-brake command helper accepted invalid signed ranges.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/can_manager.py`
+- Issue detail:
+  The current-brake command API documented a `0..60A` domain but did not enforce it, which could allow undefined/ambiguous negative command emission if used directly.
+- Resolution:
+  Added explicit input validation in `comm_can_set_cb()` and reject values outside `0..60A`.
+- Tests:
+  `test_current_brake_rejects_negative_current`,
+  `test_current_brake_rejects_over_60_amps`
+
+37. `BUG-037` Telemetry-unit documentation around `ServoMotorState` was inconsistent with parser semantics.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/motor_state.py`, `src/cubemars_servo_can/can_manager.py`
+- Issue detail:
+  Internal motor state values are raw telemetry units (`deg_elec`, `ERPM`, `ERPM/s`), but docstrings suggested converted SI units in some places.
+- Resolution:
+  Updated state/parser docstrings and debug labels to clearly distinguish raw telemetry units from public converted getters.
+- Tests: covered by existing parser/state tests (`TestStateParsing`, `test_motor_state_str_contains_fields`)
 
 ## Corrected Prior Inaccurate Claim
 

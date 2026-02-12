@@ -1,4 +1,5 @@
 import pytest
+import struct
 from typing import Generator, Dict, Any
 from unittest.mock import MagicMock, patch
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
@@ -120,10 +121,12 @@ class TestControlModes:
         # SET_POS = 4, so expected: 1 | (4 << 8) = 0x401
         assert message.arbitration_id == 0x401
 
-        # Position is scaled by 1,000,000 and converted to int32
-        # 1.5708 rad / rad_per_Eang * 1000000 = expected value
-        # This verifies the command was actually formatted, not just sent
         assert len(message.data) == 4  # int32 is 4 bytes
+        pos_raw = struct.unpack(">i", bytes(message.data))[0]
+        expected_pos_raw = int(
+            (1.5708 / motor.config.GEAR_RATIO / motor.rad_per_Eang) * 10000.0
+        )
+        assert pos_raw == expected_pos_raw
 
     def test_velocity_mode_sends_correct_command(
         self, mock_can: Dict[str, Any]
@@ -208,8 +211,6 @@ class TestControlModes:
         # SET_POS_SPD = 6, so expected: 1 | (6 << 8) = 0x601
         assert message.arbitration_id == 0x601
         assert len(message.data) == 8
-
-        import struct
 
         pos_raw = struct.unpack(">i", bytes(message.data[0:4]))[0]
         vel_raw = struct.unpack(">h", bytes(message.data[4:6]))[0]
