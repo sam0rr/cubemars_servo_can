@@ -53,7 +53,7 @@ Wants=network.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/sh -c 'ip link set can0 down || true'
-ExecStart=/bin/sh -c 'ip link set can0 up type can bitrate 1000000'
+ExecStart=/bin/sh -c 'ip link set can0 up type can bitrate 1000000 restart-ms 100'
 ExecStart=/bin/sh -c 'ip link set can0 txqueuelen 65536'
 ExecStop=/bin/sh -c 'ip link set can0 down'
 
@@ -204,9 +204,11 @@ motor.set_zero_position()
 - Position, velocity, current, and torque commands are checked against motor config limits.
 - Position-velocity mode validates target velocity and acceleration before frame packing.
 - Current brake mode rejects negative current values.
-- `update()` raises if temperature exceeds configured max.
+- `max_mosfett_temp` defaults to `70.0`.
+- `update()` raises if temperature exceeds configured max for `overtemp_trip_count` consecutive updates (default `3`).
 - Motor faults reported from CAN listener are raised on the next `update()` call.
 - `with CubeMarsServoCAN(...)` performs connection validation on entry.
+- `__exit__` performs a best-effort soft stop before `power_off()` to reduce abrupt shutdown jerk.
 
 ## Telemetry (Reading State)
 

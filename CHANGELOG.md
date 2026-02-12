@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.5 - 2026-02-12
+
+### Fixed
+
+- Added best-effort pre-poweroff soft-stop handling in `CubeMarsServoCAN.__exit__` to reduce abrupt shutdown jerk:
+  velocity ramp-down, duty/current zeroing, and position/position-velocity hold behavior.
+- Fixed `update()` thermal safety ordering to evaluate over-temperature on freshly synchronized listener telemetry instead of stale prior-cycle state.
+- Added configurable over-temperature debounce via `overtemp_trip_count` (must be `>= 1`) to avoid false trips from short telemetry spikes.
+- Fixed velocity limit boundary handling to accept exact max-speed commands robustly and clamp tiny float overages at the configured cap.
+
+### Changed
+
+- Increased default `max_mosfett_temp` from `50.0` to `70.0`.
+
+### Validation
+
+- Test suite: `144 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`629/629` statements)
+- Lint: `ruff` clean
+- Format: `black --check` clean
+
 ## 0.2.4 - 2026-02-11
 
 ### Fixed

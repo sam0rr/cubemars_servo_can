@@ -23,7 +23,8 @@ class CubeMarsServoCAN:
         self,
         motor_type: str = "AK80-9",
         motor_ID: int = 1,
-        max_mosfett_temp: float = 50.0,
+        max_mosfett_temp: float = 70.0,
+        overtemp_trip_count: int = 3,
         CSV_file: Optional[str] = None,
         log_vars: Optional[List[str]] = None,
         can_channel: str = "can0",
@@ -37,15 +38,20 @@ class CubeMarsServoCAN:
             motor_type: The type of motor being controlled, ie AK80-9.
             motor_ID: The CAN ID of the motor.
             max_mosfett_temp: temperature of the mosfett above which to throw an error, in Celsius
+            overtemp_trip_count: consecutive over-temperature samples required before raising.
             CSV_file: A CSV file to output log info to. If None, no log will be recorded.
             log_vars: The variables to log as a python list.
             can_channel: The CAN channel to use (default "can0")
             config_overrides: Optional dictionary to override specific motor parameters.
         """
+        if overtemp_trip_count < 1:
+            raise ValueError("overtemp_trip_count must be >= 1")
+
         self.type = motor_type
         self.ID = motor_ID
         self.csv_file_name = CSV_file
         self.max_temp = max_mosfett_temp
+        self.overtemp_trip_count = int(overtemp_trip_count)
 
         # Load Configuration
         self.config: MotorConfig = get_motor_config(motor_type, config_overrides)
@@ -67,6 +73,7 @@ class CubeMarsServoCAN:
         self._updated = False
         self._command_sent = False
         self._async_error: Optional[RuntimeError] = None
+        self._overtemp_samples = 0
 
         self.log_vars = list(DEFAULT_LOG_VARIABLES if log_vars is None else log_vars)
         self.LOG_FUNCTIONS = {
@@ -120,16 +127,81 @@ class CubeMarsServoCAN:
         """
         print(f"Turning off control for device: {self.device_info_string()}")
         try:
+            self._best_effort_soft_stop()
             self.power_off()
         finally:
             self._entered = False
             self._async_error = None
+            self._overtemp_samples = 0
             if self.csv_file is not None:
                 self.csv_file.close()
                 self.csv_file = None
 
         if etype is not None:
             traceback.print_exception(etype, value, tb)
+
+    def _best_effort_soft_stop(self) -> None:
+        """
+        Reduce command magnitude before power-off to avoid abrupt shutdown jerk.
+        """
+        if not self._entered:
+            return
+
+        try:
+            if self._control_state == ControlMode.VELOCITY:
+                initial_velocity = float(self._command.velocity)
+                for scale in (0.75, 0.5, 0.25, 0.0):
+                    self._command.velocity = initial_velocity * scale
+                    self._send_command()
+                    time.sleep(0.01)
+            elif self._control_state == ControlMode.POSITION:
+                # Hold the current measured angle if available; otherwise hold current target.
+                if self._last_update_time > self._start_time:
+                    hold_output_angle = (
+                        self._motor_state_async.position
+                        * self.rad_per_Eang
+                        / self.config.GEAR_RATIO
+                    )
+                else:
+                    hold_output_angle = self._command.position * self.rad_per_Eang
+                try:
+                    self.set_output_angle_radians(hold_output_angle)
+                except Exception:
+                    pass
+                for _ in range(3):
+                    self._send_command()
+                    time.sleep(0.01)
+            elif self._control_state == ControlMode.POSITION_VELOCITY:
+                # Freeze at current measured angle (or current target) and zero profile limits.
+                if self._last_update_time > self._start_time:
+                    hold_output_angle = (
+                        self._motor_state_async.position
+                        * self.rad_per_Eang
+                        / self.config.GEAR_RATIO
+                    )
+                else:
+                    hold_output_angle = self._command.position * self.rad_per_Eang
+                try:
+                    self.set_output_angle_radians(hold_output_angle, 0.0, 0.0)
+                except Exception:
+                    pass
+                for _ in range(3):
+                    self._send_command()
+                    time.sleep(0.01)
+            elif self._control_state == ControlMode.DUTY_CYCLE:
+                self._command.duty = 0.0
+                self._send_command()
+                time.sleep(0.01)
+            elif self._control_state in (
+                ControlMode.CURRENT_LOOP,
+                ControlMode.CURRENT_BRAKE,
+            ):
+                self._command.current = 0.0
+                self._send_command()
+                time.sleep(0.01)
+        except Exception:
+            # Never block shutdown flow if soft stop fails.
+            pass
 
     def qaxis_current_to_TMotor_current(self, iq: float) -> float:
         """
@@ -201,7 +273,18 @@ class CubeMarsServoCAN:
             self._async_error = None
             raise async_error
 
+        # First consume the latest listener-thread state so safety checks evaluate
+        # current telemetry rather than stale values from a previous cycle.
+        self._motor_state.set_state_obj(self._motor_state_async)
+        # Apply Gear Ratio to position
+        self._motor_state.position = self._motor_state.position / self.config.GEAR_RATIO
+
         if self.get_temperature_celsius() > self.max_temp:
+            self._overtemp_samples += 1
+        else:
+            self._overtemp_samples = 0
+
+        if self._overtemp_samples >= self.overtemp_trip_count:
             raise RuntimeError(
                 f"Temperature greater than {self.max_temp}C for device: {self.device_info_string()}"
             )
@@ -216,10 +299,6 @@ class CubeMarsServoCAN:
             )
         else:
             self._command_sent = False
-
-        self._motor_state.set_state_obj(self._motor_state_async)
-        # Apply Gear Ratio to position
-        self._motor_state.position = self._motor_state.position / self.config.GEAR_RATIO
 
         self._send_command()
 
@@ -460,10 +539,14 @@ class CubeMarsServoCAN:
         """
         # Convert V_max from ERPM to rad/s for comparison
         v_max_rad_s = self.config.V_max * self.radps_per_ERPM
-        if abs(vel) >= v_max_rad_s:
+        # Accept boundary commands robustly despite float representation and CAN quantization.
+        velocity_eps = max(1e-9, self.radps_per_ERPM * 1e-3)
+        if abs(vel) > v_max_rad_s + velocity_eps:
             raise RuntimeError(
                 f"Cannot control using speed mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
             )
+        if abs(vel) > v_max_rad_s:
+            vel = math.copysign(v_max_rad_s, vel)
 
         if self._control_state != ControlMode.VELOCITY:
             raise RuntimeError(

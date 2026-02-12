@@ -1,6 +1,6 @@
 # Bug Fix Verification Summary
 
-Last updated: February 11, 2026
+Last updated: February 12, 2026
 
 This file is the canonical bug record for `cubemars_servo_can`.
 The test suite is treated as the source of truth.
@@ -14,8 +14,8 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `125 passed`
-- Source coverage: `100%` (`575/575` statements)
+- `144 passed`
+- Source coverage: `100%` (`629/629` statements)
 - `ruff`: clean
 - `black --check`: clean
 
@@ -201,6 +201,40 @@ Status legend:
   `test_listener_ignores_command_like_low_byte_id`,
   `test_listener_ignores_non_8_byte_frame`,
   `test_listener_ignores_power_on_echo_on_exact_id`
+
+29. `BUG-029` Thermal cutoff in `update()` could be evaluated against stale state from a previous cycle.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests: `test_update_does_not_latch_stale_overtemp_when_async_state_cooled`
+
+30. `BUG-030` A transient single-sample over-temperature spike could force unnecessary shutdown behavior.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests:
+  `test_invalid_overtemp_trip_count_raises`,
+  `test_update_ignores_single_overtemp_spike_with_trip_count`,
+  `test_update_raises_after_consecutive_overtemp_samples`
+
+31. `BUG-031` Context-manager shutdown could hard-cut power at non-zero command, causing abrupt stop jerk.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests:
+  `test_exit_soft_stops_velocity_before_power_off`,
+  `test_exit_soft_stops_position_before_power_off`,
+  `test_exit_soft_stops_position_velocity_before_power_off`,
+  `test_soft_stop_duty_cycle_zeroes_and_sends_once`,
+  `test_soft_stop_current_modes_zero_and_send_once`
+
+32. `BUG-032` Velocity limit check could reject exact boundary commands due to strict comparison / float edge effects.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Tests:
+  `test_velocity_limit_accepts_exact_max`,
+  `test_velocity_limit_clamps_tiny_overage`
 
 ## Corrected Prior Inaccurate Claim
 

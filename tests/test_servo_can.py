@@ -67,6 +67,10 @@ class TestInitialization:
         assert "custom_metric" not in motor2.log_vars
         assert "custom_metric" not in DEFAULT_LOG_VARIABLES
 
+    def test_invalid_overtemp_trip_count_raises(self, mock_can: Dict[str, Any]) -> None:
+        with pytest.raises(ValueError, match="overtemp_trip_count must be >= 1"):
+            CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, overtemp_trip_count=0)
+
 
 class TestEnterExit:
     """Tests for context manager enter/exit."""
@@ -245,6 +249,27 @@ class TestSafetyLimits:
         # So we need to use a value that exceeds V_max * GEAR_RATIO
         with pytest.raises(RuntimeError, match="Cannot control using speed mode"):
             motor.set_motor_velocity_radians_per_second(350000.0)
+
+    def test_velocity_limit_accepts_exact_max(self, mock_can: Dict[str, Any]) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_velocity_control()
+
+        v_max_rad_s = motor.config.V_max * motor.radps_per_ERPM
+        motor.set_output_velocity_radians_per_second(v_max_rad_s)
+
+        assert motor._command.velocity == pytest.approx(motor.config.V_max)
+
+    def test_velocity_limit_clamps_tiny_overage(self, mock_can: Dict[str, Any]) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_velocity_control()
+
+        v_max_rad_s = motor.config.V_max * motor.radps_per_ERPM
+        tiny_over = motor.radps_per_ERPM * 5e-4
+        motor.set_output_velocity_radians_per_second(v_max_rad_s + tiny_over)
+
+        assert motor._command.velocity == pytest.approx(motor.config.V_max)
 
     def test_duty_cycle_over_100_percent_raises_error(
         self, mock_can: Dict[str, Any]
@@ -903,6 +928,229 @@ class TestContextManagerAndUpdateBranches:
         assert motor.csv_file is None
         assert motor._entered is False
 
+    def test_exit_soft_stops_velocity_before_power_off(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_velocity_control()
+        motor._command.velocity = 1000.0
+
+        with patch.object(motor, "_send_command") as send_command:
+            with patch.object(motor, "power_off") as power_off:
+                with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                    motor.__exit__(None, None, None)
+
+        assert send_command.call_count == 4
+        assert sleep.call_count == 4
+        power_off.assert_called_once()
+        assert motor._command.velocity == 0.0
+        assert motor._entered is False
+
+    def test_exit_soft_stops_position_before_power_off(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_control()
+        motor._motor_state_async.position = 100.0
+        motor._last_update_time = motor._start_time + 1.0
+        expected_hold = (
+            motor._motor_state_async.position
+            * motor.rad_per_Eang
+            / motor.config.GEAR_RATIO
+        )
+
+        with patch.object(motor, "set_output_angle_radians") as set_pos:
+            with patch.object(motor, "_send_command") as send_command:
+                with patch.object(motor, "power_off") as power_off:
+                    with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                        motor.__exit__(None, None, None)
+
+        set_pos.assert_called_once_with(expected_hold)
+        assert send_command.call_count == 3
+        assert sleep.call_count == 3
+        power_off.assert_called_once()
+        assert motor._entered is False
+
+    def test_exit_soft_stops_position_velocity_before_power_off(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_velocity_control()
+        motor._motor_state_async.position = 150.0
+        motor._last_update_time = motor._start_time + 1.0
+        expected_hold = (
+            motor._motor_state_async.position
+            * motor.rad_per_Eang
+            / motor.config.GEAR_RATIO
+        )
+
+        with patch.object(motor, "set_output_angle_radians") as set_pos:
+            with patch.object(motor, "_send_command") as send_command:
+                with patch.object(motor, "power_off") as power_off:
+                    with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                        motor.__exit__(None, None, None)
+
+        set_pos.assert_called_once_with(expected_hold, 0.0, 0.0)
+        assert send_command.call_count == 3
+        assert sleep.call_count == 3
+        power_off.assert_called_once()
+        assert motor._entered is False
+
+    def test_exit_soft_stop_position_falls_back_to_command_when_no_telemetry(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_control()
+        motor._command.position = 12.5
+        motor._last_update_time = motor._start_time
+        expected_hold = motor._command.position * motor.rad_per_Eang
+
+        with patch.object(motor, "set_output_angle_radians") as set_pos:
+            with patch.object(motor, "_send_command"):
+                with patch.object(motor, "power_off"):
+                    with patch("cubemars_servo_can.servo_can.time.sleep"):
+                        motor.__exit__(None, None, None)
+
+        set_pos.assert_called_once_with(expected_hold)
+
+    def test_exit_soft_stop_position_velocity_falls_back_to_command_when_no_telemetry(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_velocity_control()
+        motor._command.position = 7.5
+        motor._last_update_time = motor._start_time
+        expected_hold = motor._command.position * motor.rad_per_Eang
+
+        with patch.object(motor, "set_output_angle_radians") as set_pos:
+            with patch.object(motor, "_send_command"):
+                with patch.object(motor, "power_off"):
+                    with patch("cubemars_servo_can.servo_can.time.sleep"):
+                        motor.__exit__(None, None, None)
+
+        set_pos.assert_called_once_with(expected_hold, 0.0, 0.0)
+
+    def test_soft_stop_returns_early_when_not_entered(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = False
+        motor.enter_velocity_control()
+        motor._command.velocity = 1000.0
+
+        with patch.object(motor, "_send_command") as send_command:
+            motor._best_effort_soft_stop()
+
+        send_command.assert_not_called()
+        assert motor._command.velocity == 1000.0
+
+    def test_soft_stop_duty_cycle_zeroes_and_sends_once(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_duty_cycle_control()
+        motor._command.duty = 0.6
+
+        with patch.object(motor, "_send_command") as send_command:
+            with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                motor._best_effort_soft_stop()
+
+        assert motor._command.duty == 0.0
+        send_command.assert_called_once()
+        sleep.assert_called_once_with(0.01)
+
+    @pytest.mark.parametrize(
+        "mode_setter",
+        ["enter_current_control", "enter_current_brake_control"],
+    )
+    def test_soft_stop_current_modes_zero_and_send_once(
+        self, mock_can: Dict[str, Any], mode_setter: str
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        getattr(motor, mode_setter)()
+        motor._command.current = 5.0
+
+        with patch.object(motor, "_send_command") as send_command:
+            with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                motor._best_effort_soft_stop()
+
+        assert motor._command.current == 0.0
+        send_command.assert_called_once()
+        sleep.assert_called_once_with(0.01)
+
+    def test_soft_stop_position_swallows_setpoint_exception_and_continues(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_control()
+        motor._motor_state_async.position = 5.0
+        motor._last_update_time = motor._start_time + 1.0
+
+        with patch.object(
+            motor, "set_output_angle_radians", side_effect=RuntimeError("boom")
+        ):
+            with patch.object(motor, "_send_command") as send_command:
+                with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                    motor._best_effort_soft_stop()
+
+        assert send_command.call_count == 3
+        assert sleep.call_count == 3
+
+    def test_soft_stop_position_velocity_swallows_setpoint_exception_and_continues(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_position_velocity_control()
+        motor._motor_state_async.position = 5.0
+        motor._last_update_time = motor._start_time + 1.0
+
+        with patch.object(
+            motor, "set_output_angle_radians", side_effect=RuntimeError("boom")
+        ):
+            with patch.object(motor, "_send_command") as send_command:
+                with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                    motor._best_effort_soft_stop()
+
+        assert send_command.call_count == 3
+        assert sleep.call_count == 3
+
+    def test_soft_stop_swallows_outer_send_exception(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor.enter_duty_cycle_control()
+        motor._command.duty = 0.3
+
+        with patch.object(
+            motor, "_send_command", side_effect=RuntimeError("send boom")
+        ):
+            # Should not raise
+            motor._best_effort_soft_stop()
+
+        assert motor._command.duty == 0.0
+
+    def test_soft_stop_default_case_is_noop(self, mock_can: Dict[str, Any]) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor._control_state = "UNKNOWN_MODE"  # type: ignore[assignment]
+
+        with patch.object(motor, "_send_command") as send_command:
+            with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                motor._best_effort_soft_stop()
+
+        send_command.assert_not_called()
+        sleep.assert_not_called()
+
     def test_update_raises_when_not_entered(self, mock_can: Dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         with pytest.raises(RuntimeError, match="before safely powering on"):
@@ -911,11 +1159,53 @@ class TestContextManagerAndUpdateBranches:
     def test_update_raises_when_temperature_exceeds_limit(
         self, mock_can: Dict[str, Any]
     ) -> None:
-        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(
+            motor_type="AK80-9", motor_ID=1, overtemp_trip_count=1
+        )
         motor._entered = True
-        motor._motor_state.temperature = motor.max_temp + 1.0
+        motor._motor_state_async.temperature = motor.max_temp + 1.0
         with pytest.raises(RuntimeError, match="Temperature greater than"):
             motor.update()
+
+    def test_update_ignores_single_overtemp_spike_with_trip_count(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(
+            motor_type="AK80-9", motor_ID=1, overtemp_trip_count=3
+        )
+        motor._entered = True
+
+        motor._motor_state_async.temperature = motor.max_temp + 1.0
+        motor.update()
+        assert motor._overtemp_samples == 1
+
+        motor._motor_state_async.temperature = motor.max_temp - 1.0
+        motor.update()
+        assert motor._overtemp_samples == 0
+
+    def test_update_raises_after_consecutive_overtemp_samples(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(
+            motor_type="AK80-9", motor_ID=1, overtemp_trip_count=2
+        )
+        motor._entered = True
+        motor._motor_state_async.temperature = motor.max_temp + 1.0
+        motor.update()
+        with pytest.raises(RuntimeError, match="Temperature greater than"):
+            motor.update()
+
+    def test_update_does_not_latch_stale_overtemp_when_async_state_cooled(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+        motor._motor_state.temperature = motor.max_temp + 10.0
+        motor._motor_state_async.temperature = motor.max_temp - 5.0
+
+        motor.update()
+
+        assert motor.temperature == pytest.approx(motor.max_temp - 5.0)
 
     def test_update_warns_on_stale_state(self, mock_can: Dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
