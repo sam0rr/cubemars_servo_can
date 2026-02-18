@@ -1,6 +1,6 @@
 # Bug Fix Verification Summary
 
-Last updated: February 12, 2026
+Last updated: February 18, 2026
 
 This file is the canonical bug record for `cubemars_servo_can`.
 The test suite is treated as the source of truth.
@@ -14,8 +14,8 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `168 passed`
-- Source coverage: `100%` (`723/723` statements)
+- `169 passed`
+- Source coverage: `100%` (`728/728` statements)
 - `ruff`: clean
 - `black`: clean on touched files
 
@@ -222,9 +222,9 @@ Status legend:
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Tests:
-  `test_exit_soft_stops_velocity_before_power_off`,
-  `test_exit_soft_stops_position_before_power_off`,
-  `test_exit_soft_stops_position_velocity_before_power_off`,
+  `test_exit_soft_stops_velocity_before_zero_current_shutdown`,
+  `test_exit_soft_stops_position_before_zero_current_shutdown`,
+  `test_exit_soft_stops_position_velocity_before_zero_current_shutdown`,
   `test_soft_stop_duty_cycle_ramps_to_zero`,
   `test_soft_stop_current_modes_ramp_to_zero`
 
@@ -246,9 +246,9 @@ Status legend:
   Added configurable shutdown soft-stop controls:
   `soft_stop_ramp_duration_s`, `soft_stop_ramp_steps`,
   `soft_stop_brake_hold_current_amps`, `soft_stop_brake_hold_duration_s`.
-  Shutdown now uses longer configurable ramp behavior and optional bounded current-brake hold before `power_off()`.
+  Shutdown now uses longer configurable ramp behavior and optional bounded current-brake hold before final disable.
 - Tests:
-  `test_exit_soft_stops_velocity_before_power_off`,
+  `test_exit_soft_stops_velocity_before_zero_current_shutdown`,
   `test_soft_stop_optional_brake_hold_sequence`,
   `test_optional_brake_hold_noop_when_config_current_limit_is_zero`
 
@@ -302,6 +302,21 @@ Status legend:
 - Resolution:
   Updated state/parser docstrings and debug labels to clearly distinguish raw telemetry units from public converted getters.
 - Tests: covered by existing parser/state tests (`TestStateParsing`, `test_motor_state_str_contains_fields`)
+
+38. `BUG-038` Context-manager exit policy mismatched desired zero-current stop semantics.
+
+- Status: `fixed`
+- Code: `src/cubemars_servo_can/servo_can.py`
+- Issue detail:
+  Even after a ramp-down soft-stop, `__exit__` previously hard-powered off the drive, producing a perceptible final stop jerk on some setups.
+- Resolution:
+  Standardized shutdown to zero-current behavior:
+  - Removed `shutdown_mode` constructor option.
+  - `__exit__` now always sends final `SET_CURRENT 0.0A` after soft-stop.
+- Tests:
+  `test_invalid_soft_stop_and_thermal_guard_parameters_raise`,
+  `test_exit_sends_zero_current_shutdown_by_default`,
+  `test_exit_soft_stops_velocity_before_zero_current_shutdown`
 
 ## Corrected Prior Inaccurate Claim
 

@@ -82,7 +82,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor.csv_file is None
         assert motor._entered is False
 
-    def test_exit_soft_stops_velocity_before_power_off(
+    def test_exit_soft_stops_velocity_before_zero_current_shutdown(
         self, mock_can: Dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -91,17 +91,17 @@ class TestContextManagerAndUpdateBranches:
         motor._command.velocity = 1000.0
 
         with patch.object(motor, "_send_command") as send_command:
-            with patch.object(motor, "power_off") as power_off:
+            with patch.object(motor._canman, "comm_can_set_current") as set_current:
                 with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
                     motor.__exit__(None, None, None)
 
         assert send_command.call_count == motor.soft_stop_ramp_steps
         assert sleep.call_count == motor.soft_stop_ramp_steps
-        power_off.assert_called_once()
+        set_current.assert_called_once_with(motor.ID, 0.0)
         assert motor._command.velocity == 0.0
         assert motor._entered is False
 
-    def test_exit_soft_stops_position_before_power_off(
+    def test_exit_soft_stops_position_before_zero_current_shutdown(
         self, mock_can: Dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -117,17 +117,17 @@ class TestContextManagerAndUpdateBranches:
 
         with patch.object(motor, "set_output_angle_radians") as set_pos:
             with patch.object(motor, "_send_command") as send_command:
-                with patch.object(motor, "power_off") as power_off:
+                with patch.object(motor._canman, "comm_can_set_current") as set_current:
                     with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
                         motor.__exit__(None, None, None)
 
         set_pos.assert_called_once_with(expected_hold)
         assert send_command.call_count == motor.soft_stop_ramp_steps
         assert sleep.call_count == motor.soft_stop_ramp_steps
-        power_off.assert_called_once()
+        set_current.assert_called_once_with(motor.ID, 0.0)
         assert motor._entered is False
 
-    def test_exit_soft_stops_position_velocity_before_power_off(
+    def test_exit_soft_stops_position_velocity_before_zero_current_shutdown(
         self, mock_can: Dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -143,14 +143,14 @@ class TestContextManagerAndUpdateBranches:
 
         with patch.object(motor, "set_output_angle_radians") as set_pos:
             with patch.object(motor, "_send_command") as send_command:
-                with patch.object(motor, "power_off") as power_off:
+                with patch.object(motor._canman, "comm_can_set_current") as set_current:
                     with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
                         motor.__exit__(None, None, None)
 
         set_pos.assert_called_once_with(expected_hold, 0.0, 0.0)
         assert send_command.call_count == motor.soft_stop_ramp_steps
         assert sleep.call_count == motor.soft_stop_ramp_steps
-        power_off.assert_called_once()
+        set_current.assert_called_once_with(motor.ID, 0.0)
         assert motor._entered is False
 
     def test_exit_soft_stop_position_falls_back_to_command_when_no_telemetry(
@@ -165,7 +165,7 @@ class TestContextManagerAndUpdateBranches:
 
         with patch.object(motor, "set_output_angle_radians") as set_pos:
             with patch.object(motor, "_send_command"):
-                with patch.object(motor, "power_off"):
+                with patch.object(motor._canman, "comm_can_set_current"):
                     with patch("cubemars_servo_can.servo_can.time.sleep"):
                         motor.__exit__(None, None, None)
 
@@ -183,7 +183,7 @@ class TestContextManagerAndUpdateBranches:
 
         with patch.object(motor, "set_output_angle_radians") as set_pos:
             with patch.object(motor, "_send_command"):
-                with patch.object(motor, "power_off"):
+                with patch.object(motor._canman, "comm_can_set_current"):
                     with patch("cubemars_servo_can.servo_can.time.sleep"):
                         motor.__exit__(None, None, None)
 
@@ -588,3 +588,20 @@ class TestContextManagerAndUpdateBranches:
 
         lines = csv_path.read_text().strip().splitlines()
         assert len(lines) >= 2
+
+    def test_exit_warns_if_zero_current_shutdown_fails(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        with patch.object(motor, "_best_effort_soft_stop"):
+            with patch.object(
+                motor._canman, "comm_can_set_current", side_effect=RuntimeError("boom")
+            ):
+                with pytest.warns(
+                    RuntimeWarning, match="Zero-current shutdown command failed"
+                ):
+                    motor.__exit__(None, None, None)
+
+        assert motor._entered is False

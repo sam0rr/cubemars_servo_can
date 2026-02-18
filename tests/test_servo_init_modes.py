@@ -90,21 +90,24 @@ class TestEnterExit:
             with motor:
                 assert motor._entered is True
 
-        # Power on (0xFC) and power off (0xFD) should be sent
+        # Enter/exit should emit at least power-on and shutdown-path commands.
         calls = mock_can["bus"].send.call_args_list
         assert len(calls) >= 2
 
-    def test_exit_sends_power_off(self, mock_can: Dict[str, Any]) -> None:
-        """Test that exiting context sends power off command."""
+    def test_exit_sends_zero_current_shutdown_by_default(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        """Test that exiting context sends zero-current shutdown command."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
         with patch.object(motor, "check_can_connection", return_value=True):
-            with motor:
-                pass
+            with patch.object(motor, "power_off") as power_off:
+                with patch.object(motor._canman, "comm_can_set_current") as set_current:
+                    with motor:
+                        pass
 
-        # Verify send was called at least twice (power on and power off)
-        # Note: Can't inspect message.data directly as can.Message is mocked
-        assert mock_can["bus"].send.call_count >= 2
+        power_off.assert_not_called()
+        set_current.assert_called_once_with(1, 0.0)
 
 
 class TestControlModes:

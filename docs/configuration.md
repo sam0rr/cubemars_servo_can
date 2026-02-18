@@ -101,6 +101,10 @@ Validation is strict:
 - `overtemp_trip_count` must be at least `1`.
 - `soft_stop_brake_hold_current_amps` must be in `[0, 60]`.
 
+Context-manager shutdown policy:
+
+- `__exit__` always performs soft-stop, then sends `SET_CURRENT 0.0A` as final shutdown command.
+
 ---
 
 ## Notes

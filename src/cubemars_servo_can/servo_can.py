@@ -153,12 +153,12 @@ class CubeMarsServoCAN:
 
     def __exit__(self, etype, value, tb) -> None:
         """
-        Used to safely power the motor off and close the log file.
+        Used to safely stop the motor and close the log file.
         """
         print(f"Turning off control for device: {self.device_info_string()}")
         try:
             self._best_effort_soft_stop()
-            self.power_off()
+            self._send_zero_current_shutdown()
         finally:
             self._entered = False
             self._async_error = None
@@ -171,9 +171,23 @@ class CubeMarsServoCAN:
         if etype is not None:
             traceback.print_exception(etype, value, tb)
 
+    def _send_zero_current_shutdown(self) -> None:
+        """
+        Apply final shutdown command after soft-stop.
+        The library now always uses zero-current shutdown semantics.
+        """
+        try:
+            self._canman.comm_can_set_current(self.ID, 0.0)
+        except Exception as exc:
+            warnings.warn(
+                f"Zero-current shutdown command failed for {self.device_info_string()}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
     def _best_effort_soft_stop(self) -> None:
         """
-        Reduce command magnitude before power-off to avoid abrupt shutdown jerk.
+        Reduce command magnitude before final shutdown command to avoid abrupt jerk.
         """
         if not self._entered:
             return

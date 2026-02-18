@@ -211,7 +211,7 @@ motor.set_zero_position()
 - Thermal guard clears only when temperature drops to `max_mosfet_temp - cooldown_margin_c`.
 - Motor faults reported from CAN listener are raised on the next `update()` call.
 - `with CubeMarsServoCAN(...)` performs connection validation on entry.
-- `__exit__` performs a configurable best-effort soft stop before `power_off()`.
+- `__exit__` performs a configurable best-effort soft stop, then sends a final zero-current command (`SET_CURRENT 0.0A`).
 
 ### Runtime Safety Options
 
@@ -232,6 +232,7 @@ motor = CubeMarsServoCAN(
 - `cooldown_margin_c`: cooldown margin required before guard releases.
 - `soft_stop_ramp_duration_s` and `soft_stop_ramp_steps`: shutdown ramp profile.
 - `soft_stop_brake_hold_current_amps` and `soft_stop_brake_hold_duration_s`: optional brake-hold phase after ramp.
+- Final shutdown behavior is fixed to zero-current semantics (no hard `power_off()` in `__exit__`).
 
 ## Telemetry (Reading State)
 

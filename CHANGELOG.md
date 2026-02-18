@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.10 - 2026-02-18
+
+### Breaking Changes
+
+- Removed `shutdown_mode` constructor argument.
+- Context-manager shutdown is now single-path and fixed:
+  - `__exit__` performs best-effort soft-stop, then sends `SET_CURRENT` with `0.0A`.
+- Hard `power_off()` is no longer used by default context-manager exit behavior.
+
+### Validation
+
+- Test suite: `169 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`728/728` statements)
+- Lint: `ruff` clean
+
 ## 0.2.9 - 2026-02-12
 
 ### Changed
