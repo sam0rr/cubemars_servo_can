@@ -84,26 +84,19 @@ with CubeMarsServoCAN(motor_type='Custom', config_overrides=custom_motor_specs) 
 
 These constructor parameters control fault behavior and shutdown behavior:
 
-| Parameter                           | Type    | Default | Behavior                                                                |
-| ----------------------------------- | ------- | ------- | ----------------------------------------------------------------------- |
-| `max_mosfet_temp`                   | `float` | `70.0`  | Temperature threshold in `update()`.                                    |
-| `overtemp_trip_count`               | `int`   | `3`     | Consecutive over-limit samples required before raising a thermal fault. |
-| `cooldown_margin_c`                 | `float` | `2.0`   | Required cooldown margin before thermal guard clears.                   |
-| `soft_stop_ramp_duration_s`         | `float` | `0.12`  | Total best-effort shutdown ramp duration.                               |
-| `soft_stop_ramp_steps`              | `int`   | `8`     | Number of shutdown ramp steps.                                          |
-| `soft_stop_brake_hold_current_amps` | `float` | `0.0`   | Optional post-ramp brake-hold current (must be `0..60`).                |
-| `soft_stop_brake_hold_duration_s`   | `float` | `0.0`   | Optional post-ramp brake-hold duration.                                 |
+| Parameter             | Type    | Default | Behavior                                                                |
+| --------------------- | ------- | ------- | ----------------------------------------------------------------------- |
+| `max_mosfet_temp`     | `float` | `70.0`  | Temperature threshold in `update()`.                                    |
+| `overtemp_trip_count` | `int`   | `3`     | Consecutive over-limit samples required before raising a thermal fault. |
+| `cooldown_margin_c`   | `float` | `2.0`   | Required cooldown margin before thermal guard clears.                   |
 
 Validation is strict:
 
-- Negative `soft_stop_*` durations are rejected.
-- `soft_stop_ramp_steps` must be at least `1`.
 - `overtemp_trip_count` must be at least `1`.
-- `soft_stop_brake_hold_current_amps` must be in `[0, 60]`.
 
 Context-manager shutdown policy:
 
-- `__exit__` always performs soft-stop, then sends `SET_CURRENT 0.0A` as final shutdown command.
+- `__exit__` sends `SET_CURRENT 0.0A` as final shutdown command.
 
 ---
 

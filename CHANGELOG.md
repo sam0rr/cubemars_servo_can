@@ -1,18 +1,23 @@
 # Changelog
 
-## 0.2.10 - 2026-02-18
+## 0.2.11 - 2026-02-18
 
 ### Breaking Changes
 
 - Removed `shutdown_mode` constructor argument.
+- Removed shutdown soft-stop/brake-hold constructor arguments:
+  - `soft_stop_ramp_duration_s`
+  - `soft_stop_ramp_steps`
+  - `soft_stop_brake_hold_current_amps`
+  - `soft_stop_brake_hold_duration_s`
 - Context-manager shutdown is now single-path and fixed:
-  - `__exit__` performs best-effort soft-stop, then sends `SET_CURRENT` with `0.0A`.
+  - `__exit__` sends `SET_CURRENT` with `0.0A`.
 - Hard `power_off()` is no longer used by default context-manager exit behavior.
 
 ### Validation
 
-- Test suite: `169 passed`
-- Coverage: `100%` for `src/cubemars_servo_can/*` (`728/728` statements)
+- Test suite: `147 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`634/634` statements)
 - Lint: `ruff` clean
 
 ## 0.2.9 - 2026-02-12

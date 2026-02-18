@@ -53,26 +53,9 @@ class TestInitialization:
                 {"cooldown_margin_c": -0.1},
                 "cooldown_margin_c must be >= 0",
             ),
-            (
-                {"soft_stop_ramp_duration_s": -0.01},
-                "soft_stop_ramp_duration_s must be >= 0",
-            ),
-            ({"soft_stop_ramp_steps": 0}, "soft_stop_ramp_steps must be >= 1"),
-            (
-                {"soft_stop_brake_hold_current_amps": -0.1},
-                "soft_stop_brake_hold_current_amps must be >= 0",
-            ),
-            (
-                {"soft_stop_brake_hold_current_amps": 60.1},
-                "soft_stop_brake_hold_current_amps must be <= 60",
-            ),
-            (
-                {"soft_stop_brake_hold_duration_s": -0.01},
-                "soft_stop_brake_hold_duration_s must be >= 0",
-            ),
         ],
     )
-    def test_invalid_soft_stop_and_thermal_guard_parameters_raise(
+    def test_invalid_thermal_guard_parameters_raise(
         self, mock_can: Dict[str, Any], kwargs: Dict[str, float], match: str
     ) -> None:
         with pytest.raises(ValueError, match=match):

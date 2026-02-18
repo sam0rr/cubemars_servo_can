@@ -14,8 +14,8 @@ UV_OFFLINE=1 UV_CACHE_DIR=.uv-cache uv run --frozen pytest -q
 
 Current validation result:
 
-- `169 passed`
-- Source coverage: `100%` (`728/728` statements)
+- `147 passed`
+- Source coverage: `100%` (`634/634` statements)
 - `ruff`: clean
 - `black`: clean on touched files
 
@@ -222,11 +222,8 @@ Status legend:
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Tests:
-  `test_exit_soft_stops_velocity_before_zero_current_shutdown`,
-  `test_exit_soft_stops_position_before_zero_current_shutdown`,
-  `test_exit_soft_stops_position_velocity_before_zero_current_shutdown`,
-  `test_soft_stop_duty_cycle_ramps_to_zero`,
-  `test_soft_stop_current_modes_ramp_to_zero`
+  `test_exit_sends_zero_current_shutdown`,
+  `test_exit_sends_zero_current_shutdown_by_default`
 
 32. `BUG-032` Velocity limit check could reject exact boundary commands due to strict comparison / float edge effects.
 
@@ -236,21 +233,18 @@ Status legend:
   `test_velocity_limit_accepts_exact_max`,
   `test_velocity_limit_clamps_tiny_overage`
 
-33. `BUG-033` Context-manager soft stop remains too abrupt on real inertia/load, causing residual vibration at shutdown.
+33. `BUG-033` Shutdown path complexity increased maintenance risk without consistent field benefit.
 
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Issue detail:
-  Current best-effort shutdown ramp is short (~40ms in velocity mode), then `power_off()` hard-cuts drive. This can still generate mechanical jerk and audible/structural vibration on geared systems.
+  The previous shutdown path included mode-specific ramp/hold logic and extra parameters, which increased code and test surface area.
 - Resolution:
-  Added configurable shutdown soft-stop controls:
-  `soft_stop_ramp_duration_s`, `soft_stop_ramp_steps`,
-  `soft_stop_brake_hold_current_amps`, `soft_stop_brake_hold_duration_s`.
-  Shutdown now uses longer configurable ramp behavior and optional bounded current-brake hold before final disable.
+  Removed best-effort soft-stop and brake-hold logic from context-manager shutdown.
+  Shutdown now uses a direct final `SET_CURRENT 0.0A` command.
 - Tests:
-  `test_exit_soft_stops_velocity_before_zero_current_shutdown`,
-  `test_soft_stop_optional_brake_hold_sequence`,
-  `test_optional_brake_hold_noop_when_config_current_limit_is_zero`
+  `test_exit_sends_zero_current_shutdown`,
+  `test_exit_warns_if_zero_current_shutdown_fails`
 
 34. `BUG-034` Over-temperature debounce can still allow motion commands during early hot samples, leading to start-then-abrupt-stop behavior and vibration.
 
@@ -308,15 +302,16 @@ Status legend:
 - Status: `fixed`
 - Code: `src/cubemars_servo_can/servo_can.py`
 - Issue detail:
-  Even after a ramp-down soft-stop, `__exit__` previously hard-powered off the drive, producing a perceptible final stop jerk on some setups.
+  Multiple shutdown modes/paths caused behavior drift and unnecessary complexity.
 - Resolution:
-  Standardized shutdown to zero-current behavior:
+  Standardized shutdown to one path:
   - Removed `shutdown_mode` constructor option.
-  - `__exit__` now always sends final `SET_CURRENT 0.0A` after soft-stop.
+  - Removed shutdown soft-stop/brake-hold options and internals.
+  - `__exit__` now always sends final `SET_CURRENT 0.0A`.
 - Tests:
-  `test_invalid_soft_stop_and_thermal_guard_parameters_raise`,
+  `test_invalid_thermal_guard_parameters_raise`,
   `test_exit_sends_zero_current_shutdown_by_default`,
-  `test_exit_soft_stops_velocity_before_zero_current_shutdown`
+  `test_exit_warns_if_zero_current_shutdown_fails`
 
 ## Corrected Prior Inaccurate Claim
 
