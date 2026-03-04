@@ -82,14 +82,20 @@ class TestContextManagerAndUpdateBranches:
         assert motor.csv_file is None
         assert motor._entered is False
 
-    def test_exit_sends_zero_current_shutdown(self, mock_can: Dict[str, Any]) -> None:
+    def test_exit_applies_brake_hold_shutdown(self, mock_can: Dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
 
-        with patch.object(motor._canman, "comm_can_set_current") as set_current:
-            motor.__exit__(None, None, None)
+        with patch.object(motor._canman, "comm_can_set_cb") as set_brake:
+            with patch.object(motor, "power_off") as power_off:
+                with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                    motor.__exit__(None, None, None)
 
-        set_current.assert_called_once_with(motor.ID, 0.0)
+        set_brake.assert_called_once_with(
+            motor.ID, motor.shutdown_brake_hold_current_amps
+        )
+        sleep.assert_called_once_with(motor.shutdown_brake_hold_duration_s)
+        power_off.assert_called_once_with()
         assert motor._entered is False
 
     def test_update_raises_when_not_entered(self, mock_can: Dict[str, Any]) -> None:
@@ -281,18 +287,36 @@ class TestContextManagerAndUpdateBranches:
         lines = csv_path.read_text().strip().splitlines()
         assert len(lines) >= 2
 
-    def test_exit_warns_if_zero_current_shutdown_fails(
+    def test_exit_warns_if_brake_hold_shutdown_fails(
         self, mock_can: Dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
 
         with patch.object(
-            motor._canman, "comm_can_set_current", side_effect=RuntimeError("boom")
+            motor._canman, "comm_can_set_cb", side_effect=RuntimeError("boom")
         ):
             with pytest.warns(
-                RuntimeWarning, match="Zero-current shutdown command failed"
+                RuntimeWarning, match="Brake-hold shutdown command failed"
             ):
-                motor.__exit__(None, None, None)
+                with patch.object(motor, "power_off") as power_off:
+                    motor.__exit__(None, None, None)
+
+        power_off.assert_called_once_with()
+
+        assert motor._entered is False
+
+    def test_exit_warns_if_power_off_shutdown_fails(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        with patch.object(motor, "power_off", side_effect=RuntimeError("boom")):
+            with pytest.warns(
+                RuntimeWarning, match="Power-off shutdown command failed"
+            ):
+                with patch("cubemars_servo_can.servo_can.time.sleep"):
+                    motor.__exit__(None, None, None)
 
         assert motor._entered is False

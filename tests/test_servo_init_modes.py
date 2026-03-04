@@ -53,6 +53,18 @@ class TestInitialization:
                 {"cooldown_margin_c": -0.1},
                 "cooldown_margin_c must be >= 0",
             ),
+            (
+                {"shutdown_brake_hold_current_amps": -0.1},
+                "shutdown_brake_hold_current_amps must be >= 0",
+            ),
+            (
+                {"shutdown_brake_hold_current_amps": 60.1},
+                "shutdown_brake_hold_current_amps must be <= 60",
+            ),
+            (
+                {"shutdown_brake_hold_duration_s": -0.1},
+                "shutdown_brake_hold_duration_s must be >= 0",
+            ),
         ],
     )
     def test_invalid_thermal_guard_parameters_raise(
@@ -77,20 +89,22 @@ class TestEnterExit:
         calls = mock_can["bus"].send.call_args_list
         assert len(calls) >= 2
 
-    def test_exit_sends_zero_current_shutdown_by_default(
+    def test_exit_applies_brake_hold_shutdown_by_default(
         self, mock_can: Dict[str, Any]
     ) -> None:
-        """Test that exiting context sends zero-current shutdown command."""
+        """Test that exiting context applies the standard brake-hold shutdown profile."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
         with patch.object(motor, "check_can_connection", return_value=True):
             with patch.object(motor, "power_off") as power_off:
-                with patch.object(motor._canman, "comm_can_set_current") as set_current:
-                    with motor:
-                        pass
+                with patch.object(motor._canman, "comm_can_set_cb") as set_brake:
+                    with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                        with motor:
+                            pass
 
-        power_off.assert_not_called()
-        set_current.assert_called_once_with(1, 0.0)
+        set_brake.assert_called_once_with(1, motor.shutdown_brake_hold_current_amps)
+        sleep.assert_called_once_with(motor.shutdown_brake_hold_duration_s)
+        power_off.assert_called_once_with()
 
 
 class TestControlModes:

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 - 2026-03-04
+
+### Breaking Changes
+
+- Replaced the fixed zero-current context-manager shutdown with a brake-hold shutdown profile:
+  `__exit__` / `close()` now issue `SET_CURRENT_BRAKE`, wait briefly, then call `power_off()`.
+
+### Added
+
+- Added explicit constructor controls for shutdown tuning:
+  - `shutdown_brake_hold_current_amps`
+  - `shutdown_brake_hold_duration_s`
+- Added public motor lifecycle helpers:
+  - `close()`
+  - `detach_listener()`
+  - `close_shared_can_manager()`
+
 ## 0.2.11 - 2026-02-18
 
 ### Breaking Changes

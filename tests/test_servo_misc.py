@@ -25,6 +25,36 @@ class TestMiscServoBranches:
         assert motor._last_command_time is not None
         assert motor._last_command_time != before
 
+    def test_close_is_idempotent(self, mock_can: Dict[str, Any]) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        with patch.object(motor, "_send_shutdown_command") as shutdown:
+            motor.close()
+            motor.close()
+
+        shutdown.assert_called_once_with()
+
+    def test_detach_listener_uses_public_wrapper(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+
+        with patch.object(motor._canman, "remove_motor") as remove_motor:
+            motor.detach_listener()
+
+        remove_motor.assert_called_once_with(motor)
+
+    def test_close_shared_can_manager_uses_public_wrapper(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+
+        with patch.object(motor._canman, "close") as close_can:
+            motor.close_shared_can_manager()
+
+        close_can.assert_called_once_with()
+
     def test_getters_cover_output_and_motor_units(
         self, mock_can: Dict[str, Any]
     ) -> None:
