@@ -28,6 +28,7 @@ class CubeMarsServoCAN:
         cooldown_margin_c: float = 2.0,
         shutdown_brake_hold_current_amps: float = 1.0,
         shutdown_brake_hold_duration_s: float = 0.15,
+        shutdown_release_to_zero_current: bool = True,
         CSV_file: Optional[str] = None,
         log_vars: Optional[List[str]] = None,
         can_channel: str = "can0",
@@ -45,6 +46,7 @@ class CubeMarsServoCAN:
             cooldown_margin_c: cooldown hysteresis used to clear pre-trip thermal guard.
             shutdown_brake_hold_current_amps: current-brake command applied during shutdown before power-off.
             shutdown_brake_hold_duration_s: time to hold the shutdown brake command before power-off.
+            shutdown_release_to_zero_current: whether shutdown sends a final zero-current release before power-off.
             CSV_file: A CSV file to output log info to. If None, no log will be recorded.
             log_vars: The variables to log as a python list.
             can_channel: The CAN channel to use (default "can0")
@@ -60,6 +62,8 @@ class CubeMarsServoCAN:
             raise ValueError("shutdown_brake_hold_current_amps must be <= 60")
         if shutdown_brake_hold_duration_s < 0:
             raise ValueError("shutdown_brake_hold_duration_s must be >= 0")
+        if not isinstance(shutdown_release_to_zero_current, bool):
+            raise TypeError("shutdown_release_to_zero_current must be a bool")
 
         self.type = motor_type
         self.ID = motor_ID
@@ -69,6 +73,7 @@ class CubeMarsServoCAN:
         self.cooldown_margin_c = float(cooldown_margin_c)
         self.shutdown_brake_hold_current_amps = float(shutdown_brake_hold_current_amps)
         self.shutdown_brake_hold_duration_s = float(shutdown_brake_hold_duration_s)
+        self.shutdown_release_to_zero_current = shutdown_release_to_zero_current
 
         # Load Configuration
         self.config: MotorConfig = get_motor_config(motor_type, config_overrides)
@@ -149,17 +154,27 @@ class CubeMarsServoCAN:
         if etype is not None:
             traceback.print_exception(etype, value, tb)
 
-    def close(self) -> None:
+    def close(self, *, release_to_zero_current: Optional[bool] = None) -> None:
         """
         Close motor control explicitly.
         Safe to call multiple times.
         """
         if not (self._entered or self._powered_on or self.csv_file is not None):
             return
+        if release_to_zero_current is not None and not isinstance(
+            release_to_zero_current, bool
+        ):
+            raise TypeError("release_to_zero_current must be a bool when provided")
+
+        should_release_to_zero_current = self.shutdown_release_to_zero_current
+        if release_to_zero_current is not None:
+            should_release_to_zero_current = release_to_zero_current
 
         print(f"Turning off control for device: {self.device_info_string()}")
         try:
-            self._send_shutdown_command()
+            self._send_shutdown_command(
+                release_to_zero_current=should_release_to_zero_current
+            )
         finally:
             self._entered = False
             self._async_error = None
@@ -169,11 +184,11 @@ class CubeMarsServoCAN:
                 self.csv_file.close()
                 self.csv_file = None
 
-    def _send_shutdown_command(self) -> None:
+    def _send_shutdown_command(self, *, release_to_zero_current: bool) -> None:
         """
         Apply final shutdown command.
-        Shutdown uses a short current-brake hold before power-off so the controller
-        can settle at rest before torque is released.
+        Shutdown uses a short current-brake hold, can optionally release to zero
+        current, then powers off the controller.
         """
         if (
             self.shutdown_brake_hold_current_amps > 0.0
@@ -187,6 +202,16 @@ class CubeMarsServoCAN:
             except Exception as exc:
                 warnings.warn(
                     f"Brake-hold shutdown command failed for {self.device_info_string()}: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+
+        if release_to_zero_current:
+            try:
+                self._canman.comm_can_set_current(self.ID, 0.0)
+            except Exception as exc:
+                warnings.warn(
+                    f"Zero-current shutdown release failed for {self.device_info_string()}: {exc}",
                     RuntimeWarning,
                     stacklevel=2,
                 )

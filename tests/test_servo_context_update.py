@@ -87,13 +87,15 @@ class TestContextManagerAndUpdateBranches:
         motor._entered = True
 
         with patch.object(motor._canman, "comm_can_set_cb") as set_brake:
-            with patch.object(motor, "power_off") as power_off:
-                with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
-                    motor.__exit__(None, None, None)
+            with patch.object(motor._canman, "comm_can_set_current") as set_current:
+                with patch.object(motor, "power_off") as power_off:
+                    with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                        motor.__exit__(None, None, None)
 
         set_brake.assert_called_once_with(
             motor.ID, motor.shutdown_brake_hold_current_amps
         )
+        set_current.assert_called_once_with(motor.ID, 0.0)
         sleep.assert_called_once_with(motor.shutdown_brake_hold_duration_s)
         power_off.assert_called_once_with()
         assert motor._entered is False
@@ -299,11 +301,32 @@ class TestContextManagerAndUpdateBranches:
             with pytest.warns(
                 RuntimeWarning, match="Brake-hold shutdown command failed"
             ):
-                with patch.object(motor, "power_off") as power_off:
-                    motor.__exit__(None, None, None)
+                with patch.object(motor._canman, "comm_can_set_current") as set_current:
+                    with patch.object(motor, "power_off") as power_off:
+                        motor.__exit__(None, None, None)
 
+        set_current.assert_called_once_with(motor.ID, 0.0)
         power_off.assert_called_once_with()
 
+        assert motor._entered is False
+
+    def test_exit_warns_if_zero_current_shutdown_release_fails(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+        motor._entered = True
+
+        with patch.object(
+            motor._canman, "comm_can_set_current", side_effect=RuntimeError("boom")
+        ):
+            with pytest.warns(
+                RuntimeWarning, match="Zero-current shutdown release failed"
+            ):
+                with patch("cubemars_servo_can.servo_can.time.sleep"):
+                    with patch.object(motor, "power_off") as power_off:
+                        motor.__exit__(None, None, None)
+
+        power_off.assert_called_once_with()
         assert motor._entered is False
 
     def test_exit_warns_if_power_off_shutdown_fails(
@@ -316,7 +339,9 @@ class TestContextManagerAndUpdateBranches:
             with pytest.warns(
                 RuntimeWarning, match="Power-off shutdown command failed"
             ):
-                with patch("cubemars_servo_can.servo_can.time.sleep"):
-                    motor.__exit__(None, None, None)
+                with patch.object(motor._canman, "comm_can_set_current") as set_current:
+                    with patch("cubemars_servo_can.servo_can.time.sleep"):
+                        motor.__exit__(None, None, None)
 
+        set_current.assert_called_once_with(motor.ID, 0.0)
         assert motor._entered is False

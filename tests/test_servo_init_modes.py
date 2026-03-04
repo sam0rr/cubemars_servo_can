@@ -73,6 +73,18 @@ class TestInitialization:
         with pytest.raises(ValueError, match=match):
             CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, **kwargs)
 
+    def test_invalid_shutdown_release_to_zero_current_type_raises(
+        self, mock_can: Dict[str, Any]
+    ) -> None:
+        with pytest.raises(
+            TypeError, match="shutdown_release_to_zero_current must be a bool"
+        ):
+            CubeMarsServoCAN(
+                motor_type="AK80-9",
+                motor_ID=1,
+                shutdown_release_to_zero_current="true",  # type: ignore[arg-type]
+            )
+
 
 class TestEnterExit:
     """Tests for context manager enter/exit."""
@@ -98,11 +110,15 @@ class TestEnterExit:
         with patch.object(motor, "check_can_connection", return_value=True):
             with patch.object(motor, "power_off") as power_off:
                 with patch.object(motor._canman, "comm_can_set_cb") as set_brake:
-                    with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
-                        with motor:
-                            pass
+                    with patch.object(
+                        motor._canman, "comm_can_set_current"
+                    ) as set_current:
+                        with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
+                            with motor:
+                                pass
 
         set_brake.assert_called_once_with(1, motor.shutdown_brake_hold_current_amps)
+        set_current.assert_called_once_with(1, 0.0)
         sleep.assert_called_once_with(motor.shutdown_brake_hold_duration_s)
         power_off.assert_called_once_with()
 
