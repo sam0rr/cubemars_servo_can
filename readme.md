@@ -133,7 +133,13 @@ To contribute to this library:
     uv sync
     ```
 
-3.  **Run linters and formatters:**
+3.  **Check the types:**
+
+    ```bash
+    uv run mypy
+    ```
+
+4.  **Run linters and formatters:**
     ```bash
     uv run black . && uv run ruff check .
     ```

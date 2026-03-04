@@ -73,7 +73,7 @@ class CAN_Manager_servo(object):
 
     # Instance attributes for type checking
     channel: str
-    bus: can.interface.Bus
+    bus: can.BusABC
     notifier: can.Notifier
     _listeners: Dict[int, MotorListener]
     _closed: bool

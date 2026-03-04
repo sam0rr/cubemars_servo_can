@@ -89,21 +89,14 @@ These constructor parameters control fault behavior and shutdown behavior:
 | `max_mosfet_temp`     | `float` | `70.0`  | Temperature threshold in `update()`.                                    |
 | `overtemp_trip_count` | `int`   | `3`     | Consecutive over-limit samples required before raising a thermal fault. |
 | `cooldown_margin_c`   | `float` | `2.0`   | Required cooldown margin before thermal guard clears.                   |
-| `shutdown_brake_hold_current_amps` | `float` | `1.0` | Current-brake command used during shutdown before `power_off()`. |
-| `shutdown_brake_hold_duration_s` | `float` | `0.15` | Time spent in shutdown brake-hold before `power_off()`. |
-| `shutdown_release_to_zero_current` | `bool` | `true` | Send `SET_CURRENT 0.0A` after brake-hold and before `power_off()`. |
 
 Validation is strict:
 
 - `overtemp_trip_count` must be at least `1`.
-- `shutdown_brake_hold_current_amps` must be in `0..60`.
-- `shutdown_brake_hold_duration_s` must be non-negative.
-- `shutdown_release_to_zero_current` must be a boolean.
 
 Context-manager shutdown policy:
 
-- `__exit__` / `close()` send `SET_CURRENT_BRAKE`, optionally send `SET_CURRENT 0.0A`,
-  then call `power_off()`.
+- `__exit__` / `close()` send `SET_CURRENT 0.0A` as the final shutdown command.
 
 ---
 

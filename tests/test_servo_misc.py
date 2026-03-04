@@ -33,29 +33,7 @@ class TestMiscServoBranches:
             motor.close()
             motor.close()
 
-        shutdown.assert_called_once_with(release_to_zero_current=True)
-
-    def test_close_can_override_skip_zero_current_release(
-        self, mock_can: Dict[str, Any]
-    ) -> None:
-        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
-        motor._entered = True
-
-        with patch.object(motor, "_send_shutdown_command") as shutdown:
-            motor.close(release_to_zero_current=False)
-
-        shutdown.assert_called_once_with(release_to_zero_current=False)
-
-    def test_close_rejects_invalid_override_type(
-        self, mock_can: Dict[str, Any]
-    ) -> None:
-        motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
-        motor._entered = True
-
-        with pytest.raises(
-            TypeError, match="release_to_zero_current must be a bool when provided"
-        ):
-            motor.close(release_to_zero_current="false")  # type: ignore[arg-type]
+        shutdown.assert_called_once_with()
 
     def test_detach_listener_uses_public_wrapper(
         self, mock_can: Dict[str, Any]

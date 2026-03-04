@@ -1,13 +1,17 @@
 # Changelog
 
-## 0.3.1 - 2026-03-04
+## 0.3.2 - 2026-03-04
 
 ### Changed
 
-- Added configurable zero-current release before `power_off()` during shutdown:
-  `close()` now performs `SET_CURRENT_BRAKE`, optional `SET_CURRENT 0.0A`, then `power_off()`.
-- Added `shutdown_release_to_zero_current` constructor control plus a `release_to_zero_current`
-  override on `close()`.
+- Restored the fixed zero-current shutdown path for `__exit__()` / `close()`.
+
+### Added
+
+- Added public motor lifecycle helpers:
+  - `close()`
+  - `detach_listener()`
+  - `close_shared_can_manager()`
 
 ## 0.3.0 - 2026-03-04
 

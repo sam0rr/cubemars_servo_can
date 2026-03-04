@@ -53,18 +53,6 @@ class TestInitialization:
                 {"cooldown_margin_c": -0.1},
                 "cooldown_margin_c must be >= 0",
             ),
-            (
-                {"shutdown_brake_hold_current_amps": -0.1},
-                "shutdown_brake_hold_current_amps must be >= 0",
-            ),
-            (
-                {"shutdown_brake_hold_current_amps": 60.1},
-                "shutdown_brake_hold_current_amps must be <= 60",
-            ),
-            (
-                {"shutdown_brake_hold_duration_s": -0.1},
-                "shutdown_brake_hold_duration_s must be >= 0",
-            ),
         ],
     )
     def test_invalid_thermal_guard_parameters_raise(
@@ -72,18 +60,6 @@ class TestInitialization:
     ) -> None:
         with pytest.raises(ValueError, match=match):
             CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, **kwargs)
-
-    def test_invalid_shutdown_release_to_zero_current_type_raises(
-        self, mock_can: Dict[str, Any]
-    ) -> None:
-        with pytest.raises(
-            TypeError, match="shutdown_release_to_zero_current must be a bool"
-        ):
-            CubeMarsServoCAN(
-                motor_type="AK80-9",
-                motor_ID=1,
-                shutdown_release_to_zero_current="true",  # type: ignore[arg-type]
-            )
 
 
 class TestEnterExit:
@@ -101,26 +77,20 @@ class TestEnterExit:
         calls = mock_can["bus"].send.call_args_list
         assert len(calls) >= 2
 
-    def test_exit_applies_brake_hold_shutdown_by_default(
+    def test_exit_sends_zero_current_shutdown_by_default(
         self, mock_can: Dict[str, Any]
     ) -> None:
-        """Test that exiting context applies the standard brake-hold shutdown profile."""
+        """Test that exiting context sends the standard zero-current shutdown command."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
         with patch.object(motor, "check_can_connection", return_value=True):
             with patch.object(motor, "power_off") as power_off:
-                with patch.object(motor._canman, "comm_can_set_cb") as set_brake:
-                    with patch.object(
-                        motor._canman, "comm_can_set_current"
-                    ) as set_current:
-                        with patch("cubemars_servo_can.servo_can.time.sleep") as sleep:
-                            with motor:
-                                pass
+                with patch.object(motor._canman, "comm_can_set_current") as set_current:
+                    with motor:
+                        pass
 
-        set_brake.assert_called_once_with(1, motor.shutdown_brake_hold_current_amps)
         set_current.assert_called_once_with(1, 0.0)
-        sleep.assert_called_once_with(motor.shutdown_brake_hold_duration_s)
-        power_off.assert_called_once_with()
+        power_off.assert_not_called()
 
 
 class TestControlModes:
