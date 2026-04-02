@@ -111,41 +111,33 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
     "AK40-10": {
         "P_min": -32000.0,  # -3200 deg
         "P_max": 32000.0,  # 3200 deg
-        "V_min": -60000.0,  # -60000 rpm electrical speed
-        "V_max": 60000.0,  # 60000 rpm electrical speed
-        "Curr_min": -1500.0,  # -35A is the actual limit but set to -15A
-        "Curr_max": 1500.0,  # 35A is the actual limit but set to 15A
-        "T_min": -19.6,  # NM
-        "T_max": 19.6,  # NM
-        "Kt_TMotor": 0.056,  # from TMotor website (actually 1/Kvll)
+        "V_min": -60000.0,  # Vendor McParams limit
+        "V_max": 60000.0,  # Vendor McParams limit
+        "Curr_min": -730.0,
+        "Curr_max": 730.0,  # Actuator peak-current cap (7.3A)
+        "T_min": -4.1,
+        "T_max": 4.1,  # Actuator peak torque
+        "Kt_TMotor": 0.056,
         "Current_Factor": 0.59,  # UNTESTED CONSTANT!
-        "Kt_actual": 0.071,  # UNTESTED CONSTANT!
+        "Kt_actual": 0.05616438356164384,  # Maps 7.3A to 4.1Nm in this library model
         "GEAR_RATIO": 10.0,
-        "NUM_POLE_PAIRS": 7,
+        "NUM_POLE_PAIRS": 14,  # Matches CubeMars speed spec / ERPM divisor
         "Use_derived_torque_constants": False,  # true if you have a better model
     },
     "AKA60-6": {
-        "P_min": -32000.0,  # Protocol telemetry/position range is +/-3200 electrical deg
+        "P_min": -32000.0,  # Protocol telemetry range
         "P_max": 32000.0,
-        # Real vendor motor-control parameters from AKA60-6_V3_2_20250222.McParams.
-        "V_min": -50000.0,
-        "V_max": 50000.0,
-        # Real vendor current-loop limits from AKA60-6_V3_2_20250222.McParams.
+        "V_min": -50000.0,  # Vendor McParams limit
+        "V_max": 50000.0,  # Vendor McParams limit
         "Curr_min": -6000.0,
-        "Curr_max": 6000.0,
-        # Output-side torque limit from the official AKA60-6 KV80 product spec.
-        # This remains more conservative than the raw controller current loop limit.
+        "Curr_max": 6000.0,  # Vendor McParams limit (60A)
         "T_min": -9.0,
-        "T_max": 9.0,
-        # Kt_TMotor comes from the official AKA60-6 KV80 electrical spec.
+        "T_max": 9.0,  # Actuator peak torque
         "Kt_TMotor": 0.11937,
-        # Retain the library-wide compatibility factor used by other presets.
         "Current_Factor": 0.59,
-        # Inferred so the published 9Nm peak torque maps to the published 11.2A peak current
-        # through the library's output torque model: torque = iq * Kt_actual * gear_ratio.
-        "Kt_actual": 0.134,
+        "Kt_actual": 0.134,  # Maps 11.2A to 9Nm in this library model
         "GEAR_RATIO": 6.0,
-        "NUM_POLE_PAIRS": 14,
+        "NUM_POLE_PAIRS": 14,  # Matches vendor encoder/motor-pole divisor
         "Use_derived_torque_constants": False,
     },
 }

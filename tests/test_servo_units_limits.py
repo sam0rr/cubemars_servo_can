@@ -146,9 +146,8 @@ class TestVelocityUnitConversion:
         motor_velocity = motor.get_motor_velocity_radians_per_second()
 
         # Should be: ERPM * radps_per_ERPM * GEAR_RATIO
-        # 1000 * 0.000582 * 9.0 = 5.238 rad/s
-        expected = 1000.0 * 0.000582 * 9.0
-        assert abs(motor_velocity - expected) < 0.01
+        expected = 1000.0 * motor.radps_per_ERPM * motor.config.GEAR_RATIO
+        assert motor_velocity == pytest.approx(expected)
 
 
 class TestVelocityLimitUnits:
@@ -161,9 +160,10 @@ class TestVelocityLimitUnits:
         motor.enter_velocity_control()
 
         # V_max for AK80-9 is 32000 ERPM
-        # Converted to rad/s: 32000 * 0.000582 = 18.624 rad/s
-        # With gear ratio for motor-side: 18.624 * 9.0 = 167.6 rad/s
-        v_max_rad_s = 32000 * 0.000582 * 9.0  # ~167.6 rad/s
+        # Motor-side limit uses the motor-specific ERPM conversion and gearbox ratio.
+        v_max_rad_s = (
+            motor.config.V_max * motor.radps_per_ERPM * motor.config.GEAR_RATIO
+        )
 
         # Should raise error for velocity beyond limit
         with pytest.raises(RuntimeError, match="Cannot control using speed mode"):

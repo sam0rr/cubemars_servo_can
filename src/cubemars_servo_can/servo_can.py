@@ -69,7 +69,13 @@ class CubeMarsServoCAN:
         self._command = ServoCommand(0.0, 0.0, 0.0, 0.0, 0.0)
         self._control_state = ControlMode.IDLE
 
-        self.radps_per_ERPM: float = 5.82e-04
+        # Servo telemetry/commands report electrical RPM. Convert to output-side rad/s
+        # using the configured pole-pair count and gearbox ratio for this motor.
+        self.radps_per_ERPM: float = (
+            2.0
+            * math.pi
+            / (60.0 * float(self.config.NUM_POLE_PAIRS) * float(self.config.GEAR_RATIO))
+        )
         self.rad_per_Eang: float = math.pi / self.config.NUM_POLE_PAIRS
 
         self._entered = False

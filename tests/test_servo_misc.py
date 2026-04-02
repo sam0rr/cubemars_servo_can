@@ -103,7 +103,8 @@ class TestMiscServoBranches:
         motor._entered = True
         motor.enter_position_velocity_control()
 
-        # For AK40-10, V_max allows up to ~34.9 rad/s output, enough to overflow int16 ERPM.
+        # For AK40-10, 30 rad/s output is below the configured V_max but still converts
+        # past the int16 ERPM field used by the position-velocity CAN frame.
         with pytest.raises(RuntimeError, match="speed command .* outside int16 range"):
             motor.set_output_angle_radians(1.0, 30.0, 1.0)
 

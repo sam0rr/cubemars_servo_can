@@ -1,15 +1,30 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-04-02
 
 ### Added
 
-- Added a built-in `AKA60-6` motor preset sourced from current official CubeMars AKA60-6 KV80 specifications.
+- Added a built-in `AKA60-6` motor preset cross-checked against current official CubeMars specs and the shipped vendor parameter files.
 - Added `AKA60-6-firmware-and-parameters/` to collect the official AKA60-6 firmware, parameter dumps, and drawing/CAD support files.
+- Added support READMEs in both vendor parameter folders to record the validated motor-control assumptions and operational caveats.
+
+### Changed
+
+- Replaced the shared fixed `ERPM -> rad/s` conversion with a motor-specific conversion derived from each preset's `NUM_POLE_PAIRS` and `GEAR_RATIO`.
+- Corrected the `AK40-10` preset to match current vendor/spec data, including `14` as the effective ERPM divisor, actuator-safe current/torque caps, and torque constants aligned to the published `4.1Nm` / `7.3A` peak figures.
+- Refreshed `uv.lock` to the latest available dependency resolutions.
 
 ### Documentation
 
-- Updated README and configuration docs to list `AKA60-6` as a supported preset and document which fields come from the real vendor parameter files versus published actuator specs.
+- Updated README and configuration docs to list `AKA60-6` as a supported preset and document which fields come from vendor parameter files versus published actuator specs.
+
+### Validation
+
+- Test suite: `152 passed`
+- Coverage: `100%` for `src/cubemars_servo_can/*` (`646/646` statements)
+- Lint: `ruff` clean
+- Format: `black --check` clean
+- Types: `mypy` clean
 
 ## 0.3.2 - 2026-03-04
 

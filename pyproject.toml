@@ -1,7 +1,7 @@
 [project]
 name = "cubemars-servo-can"
-version = "0.3.2"
-description = "A simplified, robust, and modern Python library for controlling CubeMars AK-series actuators (e.g., AK40-10) via CAN bus in Servo Mode."
+version = "0.4.0"
+description = "A simplified, robust, and modern Python library for controlling CubeMars AK-series and AKA-series actuators via CAN bus in Servo Mode."
 readme = "readme.md"
 authors = [
     { name = "sam0rr", email = "samor140@hotmail.com" }

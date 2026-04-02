@@ -19,6 +19,38 @@ with CubeMarsServoCAN(motor_type='AK10-9', motor_ID=1) as motor:
     pass
 ```
 
+### AKA60-6 Preset Notes
+
+The `AKA60-6` preset uses the real vendor files in
+`AKA60-6-firmware-and-parameters/` plus the official published actuator specs.
+
+- `GEAR_RATIO = 6`
+- `NUM_POLE_PAIRS = 14`
+- `V_max = 50000 ERPM` from `AKA60-6_V3_2_20250222.McParams`
+- `Curr_max = 60.0 A` command cap in this library (`6000` in config storage units), from `AKA60-6_V3_2_20250222.McParams`
+- `T_max = 9.0 Nm` from the official AKA60-6 KV80 actuator peak torque spec
+
+Two fields still require interpretation for this library's torque API:
+
+- `Kt_TMotor = 0.11937` comes from the published `KV80` motor constant.
+- `Kt_actual = 0.134` is kept as the actuator-facing torque constant so the library's torque model reaches the published `9 Nm` peak torque at the published `11.2 A` peak current.
+
+### AK40-10 Preset Notes
+
+The `AK40-10` preset has been cross-checked against both:
+
+- `AK40-10 KV170.McParams`
+- the current official CubeMars `AK40-10 KV170` product spec page
+
+The resulting library preset uses:
+
+- `V_max = 60000 ERPM` from the vendor `.McParams`
+- `NUM_POLE_PAIRS = 14` from the official product spec
+- `Curr_max = 7.3 A` command cap (`730` in config storage units) from the official actuator peak-current spec
+- `T_max = 4.1 Nm` from the official actuator peak-torque spec
+
+`Kt_actual` is chosen so the published `4.1 Nm` peak torque maps to the published `7.3 A` peak current through the library torque model.
+
 ---
 
 ## Overriding Parameters

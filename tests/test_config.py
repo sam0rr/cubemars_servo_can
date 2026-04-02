@@ -10,6 +10,17 @@ def test_default_ak80_9() -> None:
     assert config.Kt_actual == 0.115
 
 
+def test_default_ak40_10_vendor_backed_values() -> None:
+    config: MotorConfig = get_motor_config("AK40-10")
+    assert config.GEAR_RATIO == 10.0
+    assert config.NUM_POLE_PAIRS == 14
+    assert config.V_max == 60000.0
+    assert config.Curr_max == 730.0
+    assert config.T_max == 4.1
+    assert config.Kt_TMotor == pytest.approx(0.056)
+    assert config.Kt_actual == pytest.approx(4.1 / 7.3 / 10.0)
+
+
 def test_override_config() -> None:
     overrides: Dict[str, float] = {"GEAR_RATIO": 50.0}
     config: MotorConfig = get_motor_config("AK80-9", custom_config=overrides)
