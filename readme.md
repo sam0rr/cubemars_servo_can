@@ -1,6 +1,6 @@
 # CubeMars Servo CAN
 
-A simplified, robust, and modern Python library for controlling CubeMars AK-series actuators (e.g., AK40-10) via CAN bus in Servo Mode.
+A simplified, robust, and modern Python library for controlling CubeMars AK-series and AKA-series actuators (for example `AK40-10` and `AKA60-6`) via CAN bus in Servo Mode.
 
 **This project is a streamlined, refactor of the [TMotorCANControl](https://github.com/neurobionics/TMotorCANControl) library.**
 
@@ -12,6 +12,7 @@ A simplified, robust, and modern Python library for controlling CubeMars AK-seri
 - **Zero Bloat:** Stripped of MIT mode and Serial control code to focus 100% on reliable Servo CAN operation.
 - **Modern Packaging:** Built with `uv` and `pyproject.toml` for fast, reliable dependency management.
 - **Advanced Configuration:** Safe defaults for AK-series motors with the ability to safely override parameters or define custom motors.
+- **Built-in Motor Presets:** `AK10-9`, `AK80-9`, `AK40-10`, and `AKA60-6`.
 - **Quality Gates:** Mock-based test suite with full source coverage (`src/cubemars_servo_can/*`).
 
 ---
@@ -78,6 +79,11 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 - [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
 - [**Changelog**](CHANGELOG.md): Release notes and validation summary.
 - [**Bug Fix Verification**](BUG_FIX_SUMMARY.md): Evidence-based bug register tied to tests.
+
+## Included Vendor Files
+
+- [`AK40-10-firmware-and-parameters`](AK40-10-firmware-and-parameters): Vendor firmware, parameter dumps, and CAD artifacts for AK40-10.
+- [`AKA60-6-firmware-and-parameters`](AKA60-6-firmware-and-parameters): Official AKA60-6 manual and drawing/CAD support files currently available in this repository.
 
 ---
 

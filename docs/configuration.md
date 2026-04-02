@@ -9,6 +9,7 @@ The library comes with built-in support for popular CubeMars motors:
 - **AK80-9** (Default)
 - **AK10-9**
 - **AK40-10**
+- **AKA60-6**
 
 To use a specific motor:
 

@@ -124,6 +124,32 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
         "NUM_POLE_PAIRS": 7,
         "Use_derived_torque_constants": False,  # true if you have a better model
     },
+    "AKA60-6": {
+        "P_min": -32000.0,  # Protocol telemetry/position range is +/-3200 electrical deg
+        "P_max": 32000.0,
+        # The CubeMars servo protocol accepts +/-100000 ERPM in velocity mode.
+        # This library still uses a legacy global ERPM->rad/s conversion, so using the
+        # protocol ceiling preserves reasonable API-side speed headroom for this 24/48V motor.
+        "V_min": -100000.0,
+        "V_max": 100000.0,
+        # CubeMars currently publishes 11.2A peak current for AKA60-6 KV80.
+        # Keep the direct-current command limit aligned with that motor-specific peak.
+        "Curr_min": -1120.0,
+        "Curr_max": 1120.0,
+        # Output-side torque limits from CubeMars product page.
+        "T_min": -9.0,
+        "T_max": 9.0,
+        # Kt_TMotor comes from the official AKA60-6 KV80 electrical spec.
+        "Kt_TMotor": 0.11937,
+        # Retain the library-wide compatibility factor used by other presets.
+        "Current_Factor": 0.59,
+        # Inferred so the published 9Nm peak torque maps to the published 11.2A peak current
+        # through the library's output torque model: torque = iq * Kt_actual * gear_ratio.
+        "Kt_actual": 0.134,
+        "GEAR_RATIO": 6.0,
+        "NUM_POLE_PAIRS": 14,
+        "Use_derived_torque_constants": False,
+    },
 }
 
 

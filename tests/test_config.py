@@ -17,6 +17,16 @@ def test_override_config() -> None:
     assert config.P_max == 32000.0  # Should remain default
 
 
+def test_default_aka60_6() -> None:
+    config: MotorConfig = get_motor_config("AKA60-6")
+    assert config.GEAR_RATIO == 6.0
+    assert config.NUM_POLE_PAIRS == 14
+    assert config.Curr_max == 1120.0
+    assert config.T_max == 9.0
+    assert config.Kt_TMotor == pytest.approx(0.11937)
+    assert config.Kt_actual == pytest.approx(0.134)
+
+
 def test_custom_motor_success() -> None:
     custom_specs: Dict[str, Any] = {
         "P_min": -100.0,
