@@ -83,7 +83,7 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 ## Included Vendor Files
 
 - [`AK40-10-firmware-and-parameters`](AK40-10-firmware-and-parameters): Vendor firmware, parameter dumps, and CAD artifacts for AK40-10.
-- [`AKA60-6-firmware-and-parameters`](AKA60-6-firmware-and-parameters): Official AKA60-6 manual and drawing/CAD support files currently available in this repository.
+- [`AKA60-6-firmware-and-parameters`](AKA60-6-firmware-and-parameters): Official AKA60-6 firmware, parameter dumps, and CAD/manual support files.
 
 ---
 

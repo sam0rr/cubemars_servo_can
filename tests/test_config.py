@@ -21,7 +21,8 @@ def test_default_aka60_6() -> None:
     config: MotorConfig = get_motor_config("AKA60-6")
     assert config.GEAR_RATIO == 6.0
     assert config.NUM_POLE_PAIRS == 14
-    assert config.Curr_max == 1120.0
+    assert config.V_max == 50000.0
+    assert config.Curr_max == 6000.0
     assert config.T_max == 9.0
     assert config.Kt_TMotor == pytest.approx(0.11937)
     assert config.Kt_actual == pytest.approx(0.134)

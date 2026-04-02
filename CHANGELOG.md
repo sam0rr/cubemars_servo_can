@@ -5,11 +5,11 @@
 ### Added
 
 - Added a built-in `AKA60-6` motor preset sourced from current official CubeMars AKA60-6 KV80 specifications.
-- Added `AKA60-6-firmware-and-parameters/` to collect the official AKA60-6 manual and drawing/CAD support files currently available in this repository.
+- Added `AKA60-6-firmware-and-parameters/` to collect the official AKA60-6 firmware, parameter dumps, and drawing/CAD support files.
 
 ### Documentation
 
-- Updated README and configuration docs to list `AKA60-6` as a supported preset and document the source/rationale for its library-facing parameters.
+- Updated README and configuration docs to list `AKA60-6` as a supported preset and document which fields come from the real vendor parameter files versus published actuator specs.
 
 ## 0.3.2 - 2026-03-04
 
