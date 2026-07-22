@@ -1,12 +1,13 @@
-import pytest
 import struct
-from typing import Dict, Any
+from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
 
 
-def get_last_message(mock_can: Dict[str, Any]) -> Any:
+def get_last_message(mock_can: dict[str, Any]) -> Any:
     """Helper to get the last CAN message sent."""
     args: tuple = mock_can["bus"].send.call_args[0]
     return args[0]
@@ -15,14 +16,14 @@ def get_last_message(mock_can: Dict[str, Any]) -> Any:
 class TestInitialization:
     """Tests for motor initialization."""
 
-    def test_initialization_with_can_channel(self, mock_can: Dict[str, Any]) -> None:
+    def test_initialization_with_can_channel(self, mock_can: dict[str, Any]) -> None:
         """Test that motor initializes with correct CAN channel."""
         CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, can_channel="vcan0")
         mock_can["can"].interface.Bus.assert_called_with(
             channel="vcan0", bustype="socketcan"
         )
 
-    def test_initialization_default_channel(self, mock_can: Dict[str, Any]) -> None:
+    def test_initialization_default_channel(self, mock_can: dict[str, Any]) -> None:
         """Test that motor initializes with default can0 channel."""
         CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         mock_can["can"].interface.Bus.assert_called_with(
@@ -30,7 +31,7 @@ class TestInitialization:
         )
 
     def test_default_log_vars_are_isolated_per_instance(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         from cubemars_servo_can.constants import DEFAULT_LOG_VARIABLES
 
@@ -42,7 +43,7 @@ class TestInitialization:
         assert "custom_metric" not in motor2.log_vars
         assert "custom_metric" not in DEFAULT_LOG_VARIABLES
 
-    def test_invalid_overtemp_trip_count_raises(self, mock_can: Dict[str, Any]) -> None:
+    def test_invalid_overtemp_trip_count_raises(self, mock_can: dict[str, Any]) -> None:
         with pytest.raises(ValueError, match="overtemp_trip_count must be >= 1"):
             CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, overtemp_trip_count=0)
 
@@ -56,7 +57,7 @@ class TestInitialization:
         ],
     )
     def test_invalid_thermal_guard_parameters_raise(
-        self, mock_can: Dict[str, Any], kwargs: Dict[str, float], match: str
+        self, mock_can: dict[str, Any], kwargs: dict[str, float], match: str
     ) -> None:
         with pytest.raises(ValueError, match=match):
             CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1, **kwargs)
@@ -65,7 +66,7 @@ class TestInitialization:
 class TestEnterExit:
     """Tests for context manager enter/exit."""
 
-    def test_enter_sets_power_on(self, mock_can: Dict[str, Any]) -> None:
+    def test_enter_sets_power_on(self, mock_can: dict[str, Any]) -> None:
         """Test that entering context sends power on command."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
@@ -78,7 +79,7 @@ class TestEnterExit:
         assert len(calls) >= 2
 
     def test_exit_sends_zero_current_shutdown_by_default(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that exiting context sends the standard zero-current shutdown command."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -97,7 +98,7 @@ class TestControlModes:
     """Tests for all control modes."""
 
     def test_position_mode_sends_correct_command(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that position mode sends correctly formatted CAN message."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -121,7 +122,7 @@ class TestControlModes:
         assert pos_raw == expected_pos_raw
 
     def test_velocity_mode_sends_correct_command(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that velocity mode sends correctly formatted CAN message."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -137,7 +138,7 @@ class TestControlModes:
         assert message.arbitration_id == 0x301
         assert len(message.data) == 4
 
-    def test_current_mode_sends_correct_command(self, mock_can: Dict[str, Any]) -> None:
+    def test_current_mode_sends_correct_command(self, mock_can: dict[str, Any]) -> None:
         """Test that current mode sends correctly formatted CAN message."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -153,7 +154,7 @@ class TestControlModes:
         assert len(message.data) == 4
 
     def test_duty_cycle_mode_sends_correct_command(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that duty cycle mode sends correctly formatted CAN message."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -170,7 +171,7 @@ class TestControlModes:
         assert len(message.data) == 4
 
     def test_current_brake_mode_sends_correct_command(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that current brake mode sends correctly formatted CAN message."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -186,7 +187,7 @@ class TestControlModes:
         assert len(message.data) == 4
 
     def test_position_velocity_mode_sends_correct_command(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that position-velocity mode sends a full 8-byte command frame."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -220,7 +221,7 @@ class TestControlModes:
 class TestSafetyLimits:
     """Tests for safety limits and error handling."""
 
-    def test_position_limit_raises_error(self, mock_can: Dict[str, Any]) -> None:
+    def test_position_limit_raises_error(self, mock_can: dict[str, Any]) -> None:
         """Test that exceeding position limit raises RuntimeError."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -231,7 +232,7 @@ class TestSafetyLimits:
         with pytest.raises(RuntimeError, match="Cannot control using position mode"):
             motor.set_motor_angle_radians(300000.0)
 
-    def test_velocity_limit_raises_error(self, mock_can: Dict[str, Any]) -> None:
+    def test_velocity_limit_raises_error(self, mock_can: dict[str, Any]) -> None:
         """Test that exceeding velocity limit raises RuntimeError."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -243,7 +244,7 @@ class TestSafetyLimits:
         with pytest.raises(RuntimeError, match="Cannot control using speed mode"):
             motor.set_motor_velocity_radians_per_second(350000.0)
 
-    def test_velocity_limit_accepts_exact_max(self, mock_can: Dict[str, Any]) -> None:
+    def test_velocity_limit_accepts_exact_max(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
         motor.enter_velocity_control()
@@ -253,7 +254,7 @@ class TestSafetyLimits:
 
         assert motor._command.velocity == pytest.approx(motor.config.V_max)
 
-    def test_velocity_limit_clamps_tiny_overage(self, mock_can: Dict[str, Any]) -> None:
+    def test_velocity_limit_clamps_tiny_overage(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
         motor.enter_velocity_control()
@@ -265,7 +266,7 @@ class TestSafetyLimits:
         assert motor._command.velocity == pytest.approx(motor.config.V_max)
 
     def test_duty_cycle_over_100_percent_raises_error(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that duty cycle > 100% raises RuntimeError."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -278,7 +279,7 @@ class TestSafetyLimits:
         ):
             motor.set_duty_cycle_percent(1.5)
 
-    def test_wrong_mode_raises_error(self, mock_can: Dict[str, Any]) -> None:
+    def test_wrong_mode_raises_error(self, mock_can: dict[str, Any]) -> None:
         """Test that sending position command in velocity mode raises error."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True

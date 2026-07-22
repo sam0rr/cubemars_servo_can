@@ -1,6 +1,7 @@
-import pytest
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
 
@@ -8,7 +9,7 @@ from cubemars_servo_can.servo_can import CubeMarsServoCAN
 class TestMiscServoBranches:
     """Tests for remaining branch coverage in servo API."""
 
-    def test_qaxis_current_to_tmotor_current(self, mock_can: Dict[str, Any]) -> None:
+    def test_qaxis_current_to_tmotor_current(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         iq = 2.0
         expected = (
@@ -18,14 +19,14 @@ class TestMiscServoBranches:
         )
         assert motor.qaxis_current_to_TMotor_current(iq) == pytest.approx(expected)
 
-    def test_set_zero_position_sends_origin(self, mock_can: Dict[str, Any]) -> None:
+    def test_set_zero_position_sends_origin(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         before = motor._last_command_time
         motor.set_zero_position()
         assert motor._last_command_time is not None
         assert motor._last_command_time != before
 
-    def test_close_is_idempotent(self, mock_can: Dict[str, Any]) -> None:
+    def test_close_is_idempotent(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
 
@@ -36,7 +37,7 @@ class TestMiscServoBranches:
         shutdown.assert_called_once_with()
 
     def test_detach_listener_uses_public_wrapper(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
@@ -46,7 +47,7 @@ class TestMiscServoBranches:
         remove_motor.assert_called_once_with(motor)
 
     def test_close_shared_can_manager_uses_public_wrapper(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
@@ -56,7 +57,7 @@ class TestMiscServoBranches:
         close_can.assert_called_once_with()
 
     def test_getters_cover_output_and_motor_units(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._motor_state.position = 10.0
@@ -72,12 +73,12 @@ class TestMiscServoBranches:
             10.0 * motor.rad_per_Eang * motor.config.GEAR_RATIO
         )
 
-    def test_enter_idle_mode_sets_state(self, mock_can: Dict[str, Any]) -> None:
+    def test_enter_idle_mode_sets_state(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor.enter_idle_mode()
         assert motor._control_state.name == "IDLE"
 
-    def test_mode_specific_errors(self, mock_can: Dict[str, Any]) -> None:
+    def test_mode_specific_errors(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
         motor.enter_velocity_control()
@@ -97,7 +98,7 @@ class TestMiscServoBranches:
             motor.set_motor_current_qaxis_amps(1.0)
 
     def test_position_velocity_rejects_speed_int16_overflow(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK40-10", motor_ID=1)
         motor._entered = True
@@ -108,27 +109,27 @@ class TestMiscServoBranches:
         with pytest.raises(RuntimeError, match="speed command .* outside int16 range"):
             motor.set_output_angle_radians(1.0, 30.0, 1.0)
 
-    def test_send_command_invalid_control_state(self, mock_can: Dict[str, Any]) -> None:
+    def test_send_command_invalid_control_state(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._control_state = 999  # type: ignore[assignment]
         with pytest.raises(RuntimeError, match="UNDEFINED STATE"):
             motor._send_command()
 
-    def test_str_representation(self, mock_can: Dict[str, Any]) -> None:
+    def test_str_representation(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         text = str(motor)
         assert "ID:" in text
         assert "Position:" in text
 
     def test_check_can_connection_requires_entered(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         with pytest.raises(RuntimeError, match="before entering motor control"):
             motor.check_can_connection()
 
     def test_check_can_connection_ignores_stale_timestamped_messages(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True

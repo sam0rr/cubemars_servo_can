@@ -1,6 +1,5 @@
 class ServoMotorState:
-    """
-    Data structure to store and update motor states.
+    """Data structure to store and update motor states.
     Stores the telemetry data received from the motor.
     Values are kept in raw servo telemetry units and converted by higher-level getters.
     """
@@ -14,8 +13,7 @@ class ServoMotorState:
         error: int,
         acceleration: float,
     ) -> None:
-        """
-        Sets the motor state to the input.
+        """Sets the motor state to the input.
 
         Args:
             position: Position in electrical degrees
@@ -36,8 +34,7 @@ class ServoMotorState:
         error: int,
         acceleration: float,
     ) -> None:
-        """
-        Sets the motor state to the input.
+        """Sets the motor state to the input.
 
         Args:
             position: Position in electrical degrees
@@ -55,8 +52,7 @@ class ServoMotorState:
         self.acceleration = acceleration
 
     def set_state_obj(self, other_motor_state: "ServoMotorState") -> None:
-        """
-        Sets this motor state object's values to those of another motor state object.
+        """Sets this motor state object's values to those of another motor state object.
 
         Args:
             other_motor_state: The other motor state object with values to set this motor state object's values to.
@@ -69,15 +65,12 @@ class ServoMotorState:
         self.acceleration = other_motor_state.acceleration
 
     def __str__(self) -> str:
-        """
-        Returns a string representation of the motor state.
-        """
+        """Returns a string representation of the motor state."""
         return f"Position: {self.position} | Velocity: {self.velocity} | Current: {self.current} | Temperature: {self.temperature} | Error: {self.error}"
 
 
 class ServoCommand:
-    """
-    Data structure to store Servo command that will be sent upon update.
+    """Data structure to store Servo command that will be sent upon update.
     Stores the desired target values for the motor.
     """
 
@@ -89,8 +82,7 @@ class ServoCommand:
         duty: float,
         acceleration: float,
     ) -> None:
-        """
-        Sets the motor command to the input.
+        """Sets the motor command to the input.
 
         Args:
             position: Position in deg

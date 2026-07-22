@@ -1,9 +1,11 @@
 """Tests for CAN manager functionality."""
 
 import struct
-import pytest
-from typing import Dict, Any
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
+
 from cubemars_servo_can.can_manager import CAN_Manager_servo, MotorListener
 from cubemars_servo_can.motor_state import ServoMotorState
 
@@ -11,7 +13,7 @@ from cubemars_servo_can.motor_state import ServoMotorState
 class TestBufferOverflow:
     """Tests for buffer overflow protection."""
 
-    def test_buffer_overflow_raises_error(self, mock_can: Dict[str, Any]) -> None:
+    def test_buffer_overflow_raises_error(self, mock_can: dict[str, Any]) -> None:
         """Test that buffer with more than 8 bytes raises error."""
         can_manager = CAN_Manager_servo(channel="vcan0")
 
@@ -23,7 +25,7 @@ class TestBufferOverflow:
                 data_len=0,
             )
 
-    def test_buffer_8_bytes_allowed(self, mock_can: Dict[str, Any]) -> None:
+    def test_buffer_8_bytes_allowed(self, mock_can: dict[str, Any]) -> None:
         """Test that buffer with exactly 8 bytes is allowed."""
         can_manager = CAN_Manager_servo(channel="vcan0")
 
@@ -38,7 +40,7 @@ class TestBufferOverflow:
 class TestTemperatureParsing:
     """Tests for temperature parsing."""
 
-    def test_temperature_parsed_as_uint8(self, mock_can: Dict[str, Any]) -> None:
+    def test_temperature_parsed_as_uint8(self, mock_can: dict[str, Any]) -> None:
         """Test that temperature is parsed as unsigned 8-bit value."""
         can_manager = CAN_Manager_servo(channel="vcan0")
 
@@ -50,7 +52,7 @@ class TestTemperatureParsing:
         # Should be 255.0 (unsigned), not -1.0 (signed)
         assert state.temperature == 255.0
 
-    def test_temperature_normal_range(self, mock_can: Dict[str, Any]) -> None:
+    def test_temperature_normal_range(self, mock_can: dict[str, Any]) -> None:
         """Test that normal temperature values are parsed correctly."""
         can_manager = CAN_Manager_servo(channel="vcan0")
 
@@ -65,7 +67,7 @@ class TestTemperatureParsing:
 class TestStateParsing:
     """Tests for parsing incoming CAN messages."""
 
-    def test_parse_servo_message(self, mock_can: Dict[str, Any]) -> None:
+    def test_parse_servo_message(self, mock_can: dict[str, Any]) -> None:
         """Test that incoming CAN messages are parsed correctly."""
         can_manager = CAN_Manager_servo(channel="vcan0")
 
@@ -85,7 +87,7 @@ class TestStateParsing:
         assert state.temperature == 40.0
         assert state.error == 0
 
-    def test_parse_servo_message_signed_fields(self, mock_can: Dict[str, Any]) -> None:
+    def test_parse_servo_message_signed_fields(self, mock_can: dict[str, Any]) -> None:
         """Signed int16 fields should decode without overflow on all supported Python versions."""
         can_manager = CAN_Manager_servo(channel="vcan0")
 
@@ -109,7 +111,7 @@ class TestStateParsing:
     )
     def test_parse_servo_message_int16_edge_values(
         self,
-        mock_can: Dict[str, Any],
+        mock_can: dict[str, Any],
         raw_hi: int,
         raw_lo: int,
         expected: int,
@@ -126,7 +128,7 @@ class TestStateParsing:
 
     @pytest.mark.parametrize("frame_len", [7, 9])
     def test_parse_servo_message_invalid_length_raises(
-        self, mock_can: Dict[str, Any], frame_len: int
+        self, mock_can: dict[str, Any], frame_len: int
     ) -> None:
         """Servo status frames must be exactly 8 bytes."""
         can_manager = CAN_Manager_servo(channel="vcan0")
@@ -140,7 +142,7 @@ class TestCanErrorHandling:
     """Tests for CAN send error behavior."""
 
     def test_send_servo_message_raises_runtime_error_on_can_error(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """CAN send failures should raise RuntimeError and not fail silently."""
         can_manager = CAN_Manager_servo(channel="vcan0")
@@ -159,7 +161,7 @@ class TestSingletonBehavior:
     """Tests for singleton channel consistency."""
 
     def test_reinitializing_on_different_channel_raises(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """A singleton initialized on one channel must not silently switch channels."""
         CAN_Manager_servo(channel="vcan0")
@@ -167,7 +169,7 @@ class TestSingletonBehavior:
             CAN_Manager_servo(channel="can0")
 
     def test_interface_open_failure_raises_runtime_error(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         mock_can["can"].interface.Bus.side_effect = OSError("No such device")
 
@@ -177,7 +179,7 @@ class TestSingletonBehavior:
         assert CAN_Manager_servo._instance is None
 
     def test_notifier_init_failure_resets_singleton(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         mock_can["can"].Notifier.side_effect = RuntimeError("listener setup failed")
 
@@ -188,7 +190,7 @@ class TestSingletonBehavior:
         mock_can["bus"].shutdown.assert_called_once()
 
     def test_notifier_init_failure_swallows_shutdown_error(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         mock_can["can"].Notifier.side_effect = RuntimeError("listener setup failed")
         mock_can["bus"].shutdown.side_effect = RuntimeError("shutdown failed")
@@ -203,7 +205,7 @@ class TestSingletonBehavior:
 class TestMotorListener:
     """Tests for listener message dispatch."""
 
-    def test_listener_updates_matching_motor(self, mock_can: Dict[str, Any]) -> None:
+    def test_listener_updates_matching_motor(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         motor = MagicMock()
         motor.ID = 5
@@ -219,7 +221,7 @@ class TestMotorListener:
         motor._update_state_async.assert_called_once_with(state)
 
     def test_listener_ignores_non_matching_motor(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         motor = MagicMock()
@@ -233,7 +235,7 @@ class TestMotorListener:
         motor._update_state_async.assert_not_called()
 
     def test_listener_ignores_command_like_low_byte_id(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
@@ -248,7 +250,7 @@ class TestMotorListener:
         motor._update_state_async.assert_not_called()
         can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
 
-    def test_listener_ignores_non_8_byte_frame(self, mock_can: Dict[str, Any]) -> None:
+    def test_listener_ignores_non_8_byte_frame(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
         motor = MagicMock()
@@ -263,7 +265,7 @@ class TestMotorListener:
         can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
 
     def test_listener_ignores_power_on_echo_on_exact_id(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.parse_servo_message = MagicMock()  # type: ignore[method-assign]
@@ -279,7 +281,7 @@ class TestMotorListener:
         can_manager.parse_servo_message.assert_not_called()  # type: ignore[attr-defined]
 
     def test_listener_surfaces_parse_errors_to_motor(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.parse_servo_message = MagicMock(side_effect=ValueError("bad frame"))  # type: ignore[method-assign]
@@ -314,7 +316,7 @@ class TestDebugBranches:
     """Tests for debug print branches."""
 
     def test_send_servo_message_debug_success_prints(
-        self, mock_can: Dict[str, Any], capsys
+        self, mock_can: dict[str, Any], capsys
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.debug = True
@@ -325,7 +327,7 @@ class TestDebugBranches:
         can_manager.debug = False
 
     def test_send_servo_message_debug_error_prints(
-        self, mock_can: Dict[str, Any], capsys
+        self, mock_can: dict[str, Any], capsys
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.debug = True
@@ -344,7 +346,7 @@ class TestDebugBranches:
         can_manager.debug = False
 
     def test_parse_servo_message_debug_prints(
-        self, mock_can: Dict[str, Any], capsys
+        self, mock_can: dict[str, Any], capsys
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.debug = True
@@ -358,7 +360,7 @@ class TestDebugBranches:
 class TestOriginCommand:
     """Tests for origin command wrapper."""
 
-    def test_set_origin_command_format(self, mock_can: Dict[str, Any]) -> None:
+    def test_set_origin_command_format(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.comm_can_set_origin(controller_id=1, set_origin_mode=2)
         message = mock_can["bus"].send.call_args[0][0]
@@ -368,7 +370,7 @@ class TestOriginCommand:
 
 class TestCommandPacking:
     def test_set_pos_and_set_pos_spd_share_position_scaling(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         position = 123.456
@@ -391,14 +393,14 @@ class TestCommandPacking:
         assert pos_spd_raw == expected
 
     def test_current_brake_rejects_negative_current(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
 
         with pytest.raises(ValueError, match="non-negative"):
             can_manager.comm_can_set_cb(controller_id=1, current=-0.5)
 
-    def test_current_brake_rejects_over_60_amps(self, mock_can: Dict[str, Any]) -> None:
+    def test_current_brake_rejects_over_60_amps(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
 
         with pytest.raises(ValueError, match="<= 60A"):
@@ -408,7 +410,7 @@ class TestCommandPacking:
 class TestListenerRegistrationLifecycle:
     """Tests for listener add/remove and close behavior."""
 
-    def test_remove_motor_unregisters_listener(self, mock_can: Dict[str, Any]) -> None:
+    def test_remove_motor_unregisters_listener(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         motor = MagicMock()
         listener = can_manager.add_motor(motor)
@@ -416,7 +418,7 @@ class TestListenerRegistrationLifecycle:
         can_manager.remove_motor(motor)
         mock_can["notifier"].remove_listener.assert_called_once_with(listener)
 
-    def test_close_stops_notifier_and_bus(self, mock_can: Dict[str, Any]) -> None:
+    def test_close_stops_notifier_and_bus(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.close()
         mock_can["notifier"].stop.assert_called_once()
@@ -425,7 +427,7 @@ class TestListenerRegistrationLifecycle:
         assert CAN_Manager_servo._instance is None
 
     def test_close_swallows_notifier_stop_error_and_continues(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.add_motor(MagicMock())
@@ -440,7 +442,7 @@ class TestListenerRegistrationLifecycle:
         assert CAN_Manager_servo._instance is None
 
     def test_close_swallows_bus_shutdown_error_and_continues(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         can_manager.add_motor(MagicMock())
@@ -454,7 +456,7 @@ class TestListenerRegistrationLifecycle:
         assert can_manager._closed is True
         assert CAN_Manager_servo._instance is None
 
-    def test_del_swallows_close_errors(self, mock_can: Dict[str, Any]) -> None:
+    def test_del_swallows_close_errors(self, mock_can: dict[str, Any]) -> None:
         can_manager = CAN_Manager_servo(channel="vcan0")
         with patch.object(can_manager, "close", side_effect=RuntimeError("close boom")):
             # Should not raise

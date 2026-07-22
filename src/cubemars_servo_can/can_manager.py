@@ -1,6 +1,7 @@
-import can
 import struct
-from typing import List, Optional, TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Optional
+
+import can
 
 from .constants import CAN_PACKET_ID
 from .motor_state import ServoMotorState
@@ -11,13 +12,10 @@ if TYPE_CHECKING:
 
 
 class MotorListener(can.Listener):
-    """
-    Python-can listener object, with handler to be called upon reception of a message on the CAN bus.
-    """
+    """Python-can listener object, with handler to be called upon reception of a message on the CAN bus."""
 
     def __init__(self, canman: "CAN_Manager_servo", motor: "CubeMarsServoCAN") -> None:
-        """
-        Sets stores can manager and motor object references.
+        """Sets stores can manager and motor object references.
 
         Args:
             canman: The CanManager object to get messages from
@@ -28,8 +26,7 @@ class MotorListener(can.Listener):
         self.motor = motor
 
     def on_message_received(self, msg: can.Message) -> None:
-        """
-        Updates this listener's motor with the info contained in msg, if that message was for this motor.
+        """Updates this listener's motor with the info contained in msg, if that message was for this motor.
 
         Args:
             msg: A python-can CAN message
@@ -55,9 +52,8 @@ class MotorListener(can.Listener):
             self.motor._set_listener_error(exc)
 
 
-class CAN_Manager_servo(object):
-    """
-    A class to manage the low level CAN communication protocols.
+class CAN_Manager_servo:
+    """A class to manage the low level CAN communication protocols.
     This class is a Singleton to ensure only one CAN bus connection exists.
     """
 
@@ -75,13 +71,12 @@ class CAN_Manager_servo(object):
     channel: str
     bus: can.BusABC
     notifier: can.Notifier
-    _listeners: Dict[int, MotorListener]
+    _listeners: dict[int, MotorListener]
     _closed: bool
 
     @staticmethod
     def is_status_arbitration_id(arbitration_id: int, motor_id: int) -> bool:
-        """
-        Return True for IDs that are plausible status frames for a motor.
+        """Return True for IDs that are plausible status frames for a motor.
 
         Compatibility:
         - Some stacks emit status frames with arbitration ID equal to motor ID.
@@ -100,14 +95,13 @@ class CAN_Manager_servo(object):
         cls,
         channel: str = "can0",
     ) -> "CAN_Manager_servo":
-        """
-        Makes a singleton object to manage a socketcan_native CAN bus.
+        """Makes a singleton object to manage a socketcan_native CAN bus.
 
         Args:
             channel: The CAN channel name (e.g. 'can0', 'vcan0')
         """
         if cls._instance is None:
-            cls._instance = super(CAN_Manager_servo, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             print("Initializing CAN Manager")
 
             # Save channel for later use
@@ -156,15 +150,10 @@ class CAN_Manager_servo(object):
         self,
         channel: str = "can0",
     ) -> None:
-        """
-        All initialization happens in __new__
-        """
-        pass
+        """All initialization happens in __new__"""
 
     def __del__(self) -> None:
-        """
-        Attempt to shut down resources when the object is deleted.
-        """
+        """Attempt to shut down resources when the object is deleted."""
         try:
             self.close()
         except Exception:
@@ -172,9 +161,7 @@ class CAN_Manager_servo(object):
             pass
 
     def close(self) -> None:
-        """
-        Stop notifier and shut down the CAN bus deterministically.
-        """
+        """Stop notifier and shut down the CAN bus deterministically."""
         if not hasattr(self, "_closed") or self._closed:
             return
 
@@ -197,8 +184,7 @@ class CAN_Manager_servo(object):
             CAN_Manager_servo._instance = None
 
     def add_motor(self, motor: "CubeMarsServoCAN") -> MotorListener:
-        """
-        Subscribe a motor object to the CAN bus to be updated upon message reception.
+        """Subscribe a motor object to the CAN bus to be updated upon message reception.
 
         Args:
             motor: The CubeMarsServoCAN object to be subscribed to the notifier
@@ -209,16 +195,13 @@ class CAN_Manager_servo(object):
         return listener
 
     def remove_motor(self, motor: "CubeMarsServoCAN") -> None:
-        """
-        Remove a previously registered motor listener from the notifier.
-        """
+        """Remove a previously registered motor listener from the notifier."""
         listener = self._listeners.pop(id(motor), None)
         if listener is not None:
             self.notifier.remove_listener(listener)
 
-    def send_servo_message(self, motor_id: int, data: List[int], data_len: int) -> None:
-        """
-        Sends a Servo Mode message to the motor, with a header of motor_id and data array of data.
+    def send_servo_message(self, motor_id: int, data: list[int], data_len: int) -> None:
+        """Sends a Servo Mode message to the motor, with a header of motor_id and data array of data.
 
         Args:
             motor_id: The CAN ID of the motor to send to.
@@ -249,8 +232,7 @@ class CAN_Manager_servo(object):
             ) from e
 
     def power_on(self, motor_id: int) -> None:
-        """
-        Sends the power on code to motor_id.
+        """Sends the power on code to motor_id.
 
         Args:
             motor_id: The CAN ID of the motor to send the message to.
@@ -260,8 +242,7 @@ class CAN_Manager_servo(object):
         )
 
     def power_off(self, motor_id: int) -> None:
-        """
-        Sends the power off code to motor_id.
+        """Sends the power off code to motor_id.
 
         Args:
             motor_id: The CAN ID of the motor to send the message to.
@@ -273,15 +254,14 @@ class CAN_Manager_servo(object):
     # --- Mode Setters ---
 
     def comm_can_set_duty(self, controller_id: int, duty: float) -> None:
-        """
-        Send a servo control message for duty cycle mode.
+        """Send a servo control message for duty cycle mode.
         Duty cycle mode: duty cycle voltage is specified for a given motor, similar to squarewave drive mode.
 
         Args:
             controller_id: CAN ID of the motor to send the message to
             duty: duty cycle (-1 to 1) to use
         """
-        buffer: List[int] = []
+        buffer: list[int] = []
         buffer_append_int32(buffer, int(duty * 100000.0))
         self.send_servo_message(
             controller_id | (CAN_PACKET_ID["SET_DUTY"] << 8),
@@ -290,15 +270,14 @@ class CAN_Manager_servo(object):
         )
 
     def comm_can_set_current(self, controller_id: int, current: float) -> None:
-        """
-        Send a servo control message for current loop mode.
+        """Send a servo control message for current loop mode.
         Current loop mode: given the Iq current specified by the motor, the motor output torque = Iq * KT, so it can be used as a torque loop.
 
         Args:
             controller_id: CAN ID of the motor to send the message to
             current: current in Amps to use (-60 to 60)
         """
-        buffer: List[int] = []
+        buffer: list[int] = []
         buffer_append_int32(buffer, int(current * 1000.0))
         self.send_servo_message(
             controller_id | (CAN_PACKET_ID["SET_CURRENT"] << 8),
@@ -307,8 +286,7 @@ class CAN_Manager_servo(object):
         )
 
     def comm_can_set_cb(self, controller_id: int, current: float) -> None:
-        """
-        Send a servo control message for current brake mode.
+        """Send a servo control message for current brake mode.
         Current brake mode: the motor is fixed at the current position by the specified brake current given by the motor (pay attention to the motor temperature when using).
 
         Args:
@@ -324,7 +302,7 @@ class CAN_Manager_servo(object):
                 f"Brake current must be <= 60A in current brake mode, got {current}A"
             )
 
-        buffer: List[int] = []
+        buffer: list[int] = []
         buffer_append_int32(buffer, int(current * 1000.0))
         self.send_servo_message(
             controller_id | (CAN_PACKET_ID["SET_CURRENT_BRAKE"] << 8),
@@ -333,15 +311,14 @@ class CAN_Manager_servo(object):
         )
 
     def comm_can_set_rpm(self, controller_id: int, rpm: float) -> None:
-        """
-        Send a servo control message for velocity control mode.
+        """Send a servo control message for velocity control mode.
         Velocity mode: the speed specified by the given motor.
 
         Args:
             controller_id: CAN ID of the motor to send the message to
             rpm: velocity in ERPM (-100000 to 100000)
         """
-        buffer: List[int] = []
+        buffer: list[int] = []
         buffer_append_int32(buffer, int(rpm))
         self.send_servo_message(
             controller_id | (CAN_PACKET_ID["SET_RPM"] << 8),
@@ -350,15 +327,14 @@ class CAN_Manager_servo(object):
         )
 
     def comm_can_set_pos(self, controller_id: int, pos: float) -> None:
-        """
-        Send a servo control message for position control mode.
+        """Send a servo control message for position control mode.
         Position mode: Given the specified position of the motor, the motor will run to the specified position, (default speed 12000erpm acceleration 40000erpm).
 
         Args:
             controller_id: CAN ID of the motor to send the message to
             pos: desired position in electrical degrees (sent as int32 * 10000)
         """
-        buffer: List[int] = []
+        buffer: list[int] = []
         buffer_append_int32(buffer, int(pos * 10000.0))
         self.send_servo_message(
             controller_id | (CAN_PACKET_ID["SET_POS"] << 8),
@@ -367,8 +343,7 @@ class CAN_Manager_servo(object):
         )
 
     def comm_can_set_origin(self, controller_id: int, set_origin_mode: int) -> None:
-        """
-        Set the origin.
+        """Set the origin.
 
         Args:
             controller_id: CAN ID of the motor to send the message to
@@ -387,8 +362,7 @@ class CAN_Manager_servo(object):
     def comm_can_set_pos_spd(
         self, controller_id: int, pos: float, spd: float, RPA: float
     ) -> None:
-        """
-        Send a servo control message for position control mode, with specified velocity and acceleration.
+        """Send a servo control message for position control mode, with specified velocity and acceleration.
         This will be a trapezoidal speed profile.
 
         Args:
@@ -397,7 +371,7 @@ class CAN_Manager_servo(object):
             spd: desired max speed in ERPM
             RPA: desired acceleration
         """
-        buffer: List[int] = []
+        buffer: list[int] = []
         buffer_append_int32(buffer, int(pos * 10000.0))
         buffer_append_int16(buffer, int(spd))
         buffer_append_int16(buffer, int(RPA))
@@ -408,8 +382,7 @@ class CAN_Manager_servo(object):
         )
 
     def parse_servo_message(self, data: bytes) -> ServoMotorState:
-        """
-        Unpack the servo message into a ServoMotorState object.
+        """Unpack the servo message into a ServoMotorState object.
 
         Args:
             data: bytes of the message to be processed

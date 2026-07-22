@@ -1,31 +1,145 @@
+[build-system]
+requires = ["uv_build>=0.11.19,<0.12.0"]
+build-backend = "uv_build"
+
 [project]
 name = "cubemars-servo-can"
-version = "0.4.0"
+version = "1.0.0"
 description = "A simplified, robust, and modern Python library for controlling CubeMars AK-series and AKA-series actuators via CAN bus in Servo Mode."
-readme = "readme.md"
+readme = "README.md"
 authors = [
-    { name = "sam0rr", email = "samor140@hotmail.com" }
+    { name = "sam0rr", email = "samor140@hotmail.com" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "python-can>=4.3.0",
 ]
-[build-system]
-requires = ["uv_build>=0.10.2,<0.11.0"]
-build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "black>=26.1.0",
-    "mypy>=1.19.1",
-    "pytest>=9.0.2",
-    "pytest-cov>=7.0.0",
-    "ruff>=0.15.0",
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.17",
+    "vulture>=2.16",
 ]
 
-[tool.pytest.ini_options]
-addopts = "-v --maxfail=1 --cov=cubemars_servo_can"
+[tool.ruff.lint]
+# Informed by the official Ruff configurations used by FastAPI, Pydantic,
+# Pydantic AI, and HTTPX, then tailored for strict typed projects:
+# https://github.com/fastapi/fastapi/blob/master/pyproject.toml
+# https://github.com/pydantic/pydantic/blob/main/pyproject.toml
+# https://github.com/pydantic/pydantic-ai/blob/main/pyproject.toml
+# https://github.com/encode/httpx/blob/master/pyproject.toml
+select = [
+    # Core correctness and safety.
+    "E",       # Pycodestyle errors
+    "W",       # Pycodestyle warnings
+    "F",       # Pyflakes correctness
+    "B",       # Flake8 Bugbear correctness checks
+    "A004",    # Prevent imports from shadowing built-ins
+    "A005",    # Prevent modules from shadowing the standard library
+    "ARG",     # Reject unused callable arguments
+    "PLE",     # Pylint error-level correctness checks
+    "PLW",     # Pylint warning-level correctness checks
+    "S",       # Bandit-derived security checks
+    "TRY004",  # Use TypeError for invalid argument types
+
+    # Typing and dataclass correctness.
+    "PYI034",  # Use Self for self-returning special methods
+    "RUF008",  # Reject mutable dataclass defaults
+    "RUF009",  # Reject function calls in dataclass defaults
+    "RUF012",  # Require ClassVar for mutable class attributes
+    "RUF033",  # Reject defaults on __post_init__ parameters
+    "RUF049",  # Reject dataclass-decorated Enum classes
+
+    # Targeted runtime and data correctness.
+    "PTH124",  # Reject legacy py.path usage
+    "PTH210",  # Reject invalid Path.with_suffix() arguments
+    "RUF024",  # Reject mutable values passed to dict.fromkeys()
+    "RUF026",  # Pass defaultdict factories positionally
+    "RUF032",  # Avoid constructing Decimal from float literals
+    "RUF064",  # Require octal literals for file-permission modes
+
+    # Asynchronous and FastAPI correctness.
+    "ASYNC",   # Detect blocking and unsafe async patterns
+    "FAST",    # FastAPI-specific correctness checks
+    "RUF006",  # Retain references to created asyncio tasks
+
+    # Imports, modernization, and unnecessary code.
+    "I",       # Import ordering
+    "RUF022",  # Sort __all__ exports
+    "UP",      # Modernize syntax for Python 3.13
+    "YTT",     # Validate Python-version checks
+    "FURB",    # Stable Refurb modernization checks
+    "C4",      # Improve comprehensions
+    "RUF005",  # Prefer unpacking over collection concatenation
+    "PIE",     # Remove unnecessary code
+    "RUF059",  # Mark intentionally unused unpacked variables explicitly
+
+    # Control-flow and resource safety.
+    "RUF021",  # Parenthesize mixed and/or expressions
+    "RUF060",  # Reject membership tests against empty collections
+    "SIM105",  # Use contextlib.suppress for intentional suppression
+    "SIM107",  # Prevent finally returns from masking exceptions
+    "SIM114",  # Combine branches with identical bodies
+    "SIM115",  # Require context managers for locally opened files
+    "SIM220",  # Reject expressions equivalent to x and not x
+    "SIM221",  # Reject expressions equivalent to x or not x
+    "TRY300",  # Keep success-only statements outside try blocks
+
+    # Documentation, maintainability, and performance.
+    "D",       # Docstring conventions
+    "N",       # PEP 8 naming conventions
+    "C90",     # McCabe complexity
+    "PLR0913", # Excessive function arguments
+    "PERF",    # Performance anti-patterns
+    "RUF017",  # Prevent quadratic list flattening with sum()
+
+    # Logging and development hygiene.
+    "LOG",     # Logging API correctness
+    "G",       # Logging format-string correctness
+    "T10",     # Debugger calls
+    "T20",     # Print statements
+
+    # Test and assertion correctness.
+    "PT",      # Pytest correctness and style checks
+    "RUF018",  # Reject assignments inside assertions
+    "RUF030",  # Reject print() calls used as assert messages
+    "RUF040",  # Reject non-string literal assert messages
+    "RUF043",  # Require unambiguous pytest.raises() patterns
+
+    # Suppression hygiene.
+    "PGH",     # Detect blanket suppressions and invalid mock access
+    "RUF028",  # Validate Ruff formatter-suppression comments
+    "RUF10",   # Validate noqa and suppression directives
+
+    # Project configuration correctness.
+    "RUF200",  # Validate pyproject.toml
+]
+ignore = [
+    "E501",  # Line length is handled by the Ruff formatter
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Pytest assertions are test checks, not runtime security guards.
+"tests/**/*.py" = ["S101"]
+# Vulture whitelist files intentionally use undefined bare-name expressions
+# to mark dynamically consumed symbols as used.
+"vulture_whitelist.py" = ["B018", "F821"]
 
 [tool.mypy]
 strict = true
-files = ["src"]
+disallow_any_explicit = true
+files = ["src", "tests"]
+
+[tool.vulture]
+min_confidence = 60
+paths = ["src", "tests", "vulture_whitelist.py"]
+sort_by_size = true
+
+[tool.pytest.ini_options]
+addopts = "-v --maxfail=1 --cov=cubemars_servo_can --cov-fail-under=100"

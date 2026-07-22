@@ -1,11 +1,10 @@
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Any
 
 
 @dataclass
 class MotorConfig:
-    """
-    Configuration for a specific motor type.
+    """Configuration for a specific motor type.
     All fields are mandatory to ensure safe operation.
     """
 
@@ -53,9 +52,8 @@ class MotorConfig:
     Use_derived_torque_constants: bool
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MotorConfig":
-        """
-        Create a config object from a dictionary.
+    def from_dict(cls, data: dict[str, Any]) -> "MotorConfig":
+        """Create a config object from a dictionary.
         Raises TypeError or KeyError if required fields are missing.
         """
         # Filter strictly for known fields, but then allow standard dataclass validation
@@ -75,7 +73,7 @@ class MotorConfig:
 
 # Default definitions for known motors
 # Values are taken from the original TMotorCANControl library
-DEFAULTS: Dict[str, Dict[str, Any]] = {
+DEFAULTS: dict[str, dict[str, Any]] = {
     "AK10-9": {
         "P_min": -32000.0,  # -3200 deg
         "P_max": 32000.0,  # 3200 deg
@@ -144,10 +142,9 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
 
 
 def get_motor_config(
-    motor_type: str, custom_config: Optional[Dict[str, Any]] = None
+    motor_type: str, custom_config: dict[str, Any] | None = None
 ) -> MotorConfig:
-    """
-    Retrieve the configuration for a motor.
+    """Retrieve the configuration for a motor.
 
     Args:
         motor_type: The name of the motor (e.g., 'AK80-9').

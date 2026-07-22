@@ -1,11 +1,12 @@
-import pytest
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
 
 
-def get_last_message(mock_can: Dict[str, Any]) -> Any:
+def get_last_message(mock_can: dict[str, Any]) -> Any:
     """Helper to get the last CAN message sent."""
     args: tuple = mock_can["bus"].send.call_args[0]
     return args[0]
@@ -14,7 +15,7 @@ def get_last_message(mock_can: Dict[str, Any]) -> Any:
 class TestTorqueCalculation:
     """Tests for torque calculations."""
 
-    def test_torque_to_current_conversion(self, mock_can: Dict[str, Any]) -> None:
+    def test_torque_to_current_conversion(self, mock_can: dict[str, Any]) -> None:
         """Test that torque commands are converted to current correctly."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -41,7 +42,7 @@ class TestTorqueCalculation:
 class TestTelemetry:
     """Tests for telemetry and state reading."""
 
-    def test_temperature_getter(self, mock_can: Dict[str, Any]) -> None:
+    def test_temperature_getter(self, mock_can: dict[str, Any]) -> None:
         """Test that temperature property reads from state."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -51,7 +52,7 @@ class TestTelemetry:
 
         assert motor.temperature == 45.5
 
-    def test_error_getter(self, mock_can: Dict[str, Any]) -> None:
+    def test_error_getter(self, mock_can: dict[str, Any]) -> None:
         """Test that error property reads from state."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -69,7 +70,7 @@ class TestDtCalculation:
     """Tests for dt calculation and acceleration computation."""
 
     def test_acceleration_calculation_with_positive_dt(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that dt is calculated correctly (positive) for acceleration."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -102,7 +103,7 @@ class TestDtCalculation:
         assert motor._motor_state_async.acceleration == 10.0
 
     def test_acceleration_zero_on_instant_update(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that acceleration is zero when dt is very small (avoids division by zero)."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -134,7 +135,7 @@ class TestVelocityUnitConversion:
     """Tests for velocity unit conversion."""
 
     def test_motor_velocity_includes_conversion_factor(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that motor velocity includes radps_per_ERPM conversion."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -153,7 +154,7 @@ class TestVelocityUnitConversion:
 class TestVelocityLimitUnits:
     """Tests for velocity limit checking in correct units."""
 
-    def test_velocity_limit_in_correct_units(self, mock_can: Dict[str, Any]) -> None:
+    def test_velocity_limit_in_correct_units(self, mock_can: dict[str, Any]) -> None:
         """Test that velocity limit is compared in correct units (rad/s)."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -169,7 +170,7 @@ class TestVelocityLimitUnits:
         with pytest.raises(RuntimeError, match="Cannot control using speed mode"):
             motor.set_motor_velocity_radians_per_second(v_max_rad_s + 10.0)
 
-    def test_velocity_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+    def test_velocity_within_limit_passes(self, mock_can: dict[str, Any]) -> None:
         """Test that velocity within limit doesn't raise error."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -182,7 +183,7 @@ class TestVelocityLimitUnits:
 class TestPositionLimitUnits:
     """Tests for position limit checking in correct units."""
 
-    def test_position_limit_in_correct_units(self, mock_can: Dict[str, Any]) -> None:
+    def test_position_limit_in_correct_units(self, mock_can: dict[str, Any]) -> None:
         """Test that position limit is compared in correct units (radians)."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -198,7 +199,7 @@ class TestPositionLimitUnits:
         with pytest.raises(RuntimeError, match="Cannot control using position mode"):
             motor.set_output_angle_radians(p_max_output_rad + 10.0)
 
-    def test_position_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+    def test_position_within_limit_passes(self, mock_can: dict[str, Any]) -> None:
         """Test that position within limit doesn't raise error."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -211,7 +212,7 @@ class TestPositionLimitUnits:
 class TestTorqueFormula:
     """Tests for torque calculation formula."""
 
-    def test_motor_torque_correct_formula(self, mock_can: Dict[str, Any]) -> None:
+    def test_motor_torque_correct_formula(self, mock_can: dict[str, Any]) -> None:
         """Test that motor torque correctly accounts for gear ratio."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -237,7 +238,7 @@ class TestTorqueGetterUnits:
     """Tests for motor/output torque getters."""
 
     def test_motor_torque_getter_divides_by_gear_ratio(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Motor-side torque should not include gear ratio amplification."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -260,7 +261,7 @@ class TestAccelerationUnitConversion:
     """Tests for acceleration unit conversion."""
 
     def test_acceleration_getters_convert_erpm_per_second(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Acceleration from telemetry is ERPM/s and must be converted to rad/s^2."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -283,7 +284,7 @@ class TestAccelerationUnitConversion:
 class TestCurrentLimits:
     """Tests for current limit enforcement."""
 
-    def test_current_limit_enforced(self, mock_can: Dict[str, Any]) -> None:
+    def test_current_limit_enforced(self, mock_can: dict[str, Any]) -> None:
         """Test that current limits are enforced."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -293,7 +294,7 @@ class TestCurrentLimits:
         with pytest.raises(RuntimeError, match="Current.*out of range"):
             motor.set_motor_current_qaxis_amps(20.0)  # Beyond 15A limit
 
-    def test_current_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+    def test_current_within_limit_passes(self, mock_can: dict[str, Any]) -> None:
         """Test that current within limit doesn't raise error."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -306,7 +307,7 @@ class TestCurrentLimits:
 class TestCurrentBrakeMode:
     """Tests specific to current brake mode semantics."""
 
-    def test_negative_brake_current_rejected(self, mock_can: Dict[str, Any]) -> None:
+    def test_negative_brake_current_rejected(self, mock_can: dict[str, Any]) -> None:
         """Brake mode should reject negative current commands."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -315,7 +316,7 @@ class TestCurrentBrakeMode:
         with pytest.raises(RuntimeError, match="requires non-negative current"):
             motor.set_motor_current_qaxis_amps(-1.0)
 
-    def test_non_negative_brake_current_allowed(self, mock_can: Dict[str, Any]) -> None:
+    def test_non_negative_brake_current_allowed(self, mock_can: dict[str, Any]) -> None:
         """Brake mode should allow non-negative current within limits."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -327,7 +328,7 @@ class TestPositionVelocityModeLimits:
     """Tests for position-velocity command limit checks."""
 
     def test_position_velocity_rejects_speed_beyond_limit(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Velocity limit checks should apply in position-velocity mode too."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -339,7 +340,7 @@ class TestPositionVelocityModeLimits:
             motor.set_output_angle_radians(1.0, v_max_rad_s + 0.1, 1.0)
 
     def test_position_velocity_rejects_acceleration_int16_overflow(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Acceleration must fit the int16 field used by the CAN frame."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -354,7 +355,7 @@ class TestPositionVelocityModeLimits:
 class TestTorqueLimits:
     """Tests for torque limit enforcement."""
 
-    def test_torque_limit_enforced(self, mock_can: Dict[str, Any]) -> None:
+    def test_torque_limit_enforced(self, mock_can: dict[str, Any]) -> None:
         """Test that torque limits are enforced."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -364,7 +365,7 @@ class TestTorqueLimits:
         with pytest.raises(RuntimeError, match="Torque.*out of range"):
             motor.set_output_torque_newton_meters(40.0)  # Beyond 30 Nm limit
 
-    def test_torque_within_limit_passes(self, mock_can: Dict[str, Any]) -> None:
+    def test_torque_within_limit_passes(self, mock_can: dict[str, Any]) -> None:
         """Test that torque within limit doesn't raise error."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True

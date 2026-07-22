@@ -1,6 +1,7 @@
-import pytest
-from typing import Dict, Any
+from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from cubemars_servo_can.constants import ControlMode
 from cubemars_servo_can.servo_can import CubeMarsServoCAN
@@ -10,7 +11,7 @@ class TestContextManagerAndUpdateBranches:
     """Tests for context manager, CSV logging, and update error paths."""
 
     def test_enter_with_csv_creates_writer(
-        self, mock_can: Dict[str, Any], tmp_path
+        self, mock_can: dict[str, Any], tmp_path
     ) -> None:
         csv_path = tmp_path / "motor_log.csv"
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
@@ -25,7 +26,7 @@ class TestContextManagerAndUpdateBranches:
         assert content[0].startswith("pi_time,")
 
     def test_enter_raises_if_connection_check_fails(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         with patch.object(motor, "check_can_connection", return_value=False):
@@ -34,7 +35,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor._entered is False
 
     def test_enter_failure_after_power_on_still_powers_off(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
 
@@ -49,7 +50,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor._entered is False
 
     def test_enter_failure_closes_csv_and_swallows_power_off_failure(
-        self, mock_can: Dict[str, Any], tmp_path
+        self, mock_can: dict[str, Any], tmp_path
     ) -> None:
         csv_path = tmp_path / "motor_log.csv"
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
@@ -66,7 +67,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor.csv_file is None
 
     def test_exit_closes_csv_and_prints_traceback(
-        self, mock_can: Dict[str, Any], tmp_path
+        self, mock_can: dict[str, Any], tmp_path
     ) -> None:
         csv_path = tmp_path / "motor_log.csv"
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
@@ -82,7 +83,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor.csv_file is None
         assert motor._entered is False
 
-    def test_exit_sends_zero_current_shutdown(self, mock_can: Dict[str, Any]) -> None:
+    def test_exit_sends_zero_current_shutdown(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
 
@@ -94,13 +95,13 @@ class TestContextManagerAndUpdateBranches:
         power_off.assert_not_called()
         assert motor._entered is False
 
-    def test_update_raises_when_not_entered(self, mock_can: Dict[str, Any]) -> None:
+    def test_update_raises_when_not_entered(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         with pytest.raises(RuntimeError, match="before safely powering on"):
             motor.update()
 
     def test_update_raises_when_temperature_exceeds_limit(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9", motor_ID=1, overtemp_trip_count=1
@@ -111,7 +112,7 @@ class TestContextManagerAndUpdateBranches:
             motor.update()
 
     def test_update_ignores_single_overtemp_spike_with_trip_count(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9", motor_ID=1, overtemp_trip_count=3
@@ -127,7 +128,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor._overtemp_samples == 0
 
     def test_update_pretrip_thermal_guard_suppresses_velocity_motion(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9", motor_ID=1, overtemp_trip_count=3
@@ -146,7 +147,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor._overtemp_samples == 1
 
     def test_update_pretrip_thermal_guard_holds_position_velocity_mode(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9", motor_ID=1, overtemp_trip_count=3
@@ -169,7 +170,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor._command.acceleration == 2000.0
 
     def test_thermal_guard_requires_hysteresis_cooldown_to_clear(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9",
@@ -207,7 +208,7 @@ class TestContextManagerAndUpdateBranches:
         ],
     )
     def test_send_thermal_guard_command_restores_user_command(
-        self, mock_can: Dict[str, Any], mode: ControlMode
+        self, mock_can: dict[str, Any], mode: ControlMode
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -231,7 +232,7 @@ class TestContextManagerAndUpdateBranches:
         assert motor._command.acceleration == 56.0
 
     def test_update_raises_after_consecutive_overtemp_samples(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9", motor_ID=1, overtemp_trip_count=2
@@ -243,7 +244,7 @@ class TestContextManagerAndUpdateBranches:
             motor.update()
 
     def test_update_does_not_latch_stale_overtemp_when_async_state_cooled(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -254,7 +255,7 @@ class TestContextManagerAndUpdateBranches:
 
         assert motor.temperature == pytest.approx(motor.max_temp - 5.0)
 
-    def test_update_warns_on_stale_state(self, mock_can: Dict[str, Any]) -> None:
+    def test_update_warns_on_stale_state(self, mock_can: dict[str, Any]) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
         motor._last_command_time = 9.9
@@ -265,7 +266,7 @@ class TestContextManagerAndUpdateBranches:
             ):
                 motor.update()
 
-    def test_update_writes_csv_row(self, mock_can: Dict[str, Any], tmp_path) -> None:
+    def test_update_writes_csv_row(self, mock_can: dict[str, Any], tmp_path) -> None:
         csv_path = tmp_path / "motor_log.csv"
         motor: CubeMarsServoCAN = CubeMarsServoCAN(
             motor_type="AK80-9", motor_ID=1, CSV_file=str(csv_path)
@@ -284,7 +285,7 @@ class TestContextManagerAndUpdateBranches:
         assert len(lines) >= 2
 
     def test_exit_warns_if_zero_current_shutdown_fails(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True

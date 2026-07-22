@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +10,7 @@ class TestCheckCanConnection:
     """Tests for CAN connection checking."""
 
     def test_check_connection_returns_false_when_no_response(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that check_can_connection returns False when no motor response."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -26,7 +26,7 @@ class TestCheckCanConnection:
             assert result is False
 
     def test_check_connection_returns_true_with_response(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Test that check_can_connection returns True when motor responds."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -47,7 +47,7 @@ class TestCheckCanConnection:
             assert result is True
 
     def test_check_connection_accepts_compatible_non_command_id(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -64,7 +64,7 @@ class TestCheckCanConnection:
             assert motor.check_can_connection() is True
 
     def test_check_connection_rejects_command_like_low_byte_id(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -83,7 +83,7 @@ class TestCheckCanConnection:
                 assert motor.check_can_connection() is False
 
     def test_check_connection_rejects_power_on_echo(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -100,7 +100,7 @@ class TestCheckCanConnection:
             assert motor.check_can_connection() is False
 
     def test_check_connection_ignores_non_8_byte_frames(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -117,7 +117,7 @@ class TestCheckCanConnection:
             assert motor.check_can_connection() is False
 
     def test_check_connection_ignores_unparseable_frames(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -139,7 +139,7 @@ class TestCheckCanConnection:
                 assert motor.check_can_connection() is False
 
     def test_check_connection_busy_stream_is_bounded(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True
@@ -163,7 +163,7 @@ class TestErrorHandling:
     """Tests for error state handling."""
 
     def test_error_state_raised_on_update_thread(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         """Error frames are captured async and raised when user calls update()."""
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
@@ -186,7 +186,7 @@ class TestErrorHandling:
             motor.update()
 
     def test_listener_error_raised_on_update_thread(
-        self, mock_can: Dict[str, Any]
+        self, mock_can: dict[str, Any]
     ) -> None:
         motor: CubeMarsServoCAN = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
         motor._entered = True

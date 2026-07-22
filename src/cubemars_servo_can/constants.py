@@ -1,10 +1,9 @@
 from enum import IntEnum
-from typing import Dict, List, Final
+from typing import Final
 
 
 class ControlMode(IntEnum):
-    """
-    Control states for the servo motor.
+    """Control states for the servo motor.
     Using IntEnum allows these to be directly used in integer comparisons/bitwise operations if needed.
     """
 
@@ -20,7 +19,7 @@ class ControlMode(IntEnum):
 
 # CAN Command IDs
 # These are the sub-indices used in the CAN arbitration ID to specify the command type.
-CAN_PACKET_ID: Final[Dict[str, int]] = {
+CAN_PACKET_ID: Final[dict[str, int]] = {
     "SET_DUTY": 0,  # Duty cycle mode
     "SET_CURRENT": 1,  # Current loop mode
     "SET_CURRENT_BRAKE": 2,  # Current brake mode
@@ -32,7 +31,7 @@ CAN_PACKET_ID: Final[Dict[str, int]] = {
 
 # Error Codes
 # Mapping from the motor's error byte to a human-readable description.
-ERROR_CODES: Final[Dict[int, str]] = {
+ERROR_CODES: Final[dict[int, str]] = {
     0: "No Error",
     1: "Over temperature fault",
     2: "Over current fault",
@@ -43,7 +42,7 @@ ERROR_CODES: Final[Dict[int, str]] = {
 }
 
 # Default variables to be logged to CSV
-DEFAULT_LOG_VARIABLES: Final[List[str]] = [
+DEFAULT_LOG_VARIABLES: Final[list[str]] = [
     "motor_position",
     "motor_speed",
     "motor_current",

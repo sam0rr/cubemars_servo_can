@@ -1,11 +1,13 @@
-import pytest
 import gc
-from typing import Generator, Dict, Any
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
-def mock_can() -> Generator[Dict[str, Any], None, None]:
+def mock_can() -> Generator[dict[str, Any]]:
     """Fixture that mocks python-can bus and notifier primitives."""
     with patch("cubemars_servo_can.can_manager.can") as mock_can_lib:
         mock_bus: MagicMock = MagicMock()
@@ -25,7 +27,7 @@ def mock_can() -> Generator[Dict[str, Any], None, None]:
 
 
 @pytest.fixture(autouse=True)
-def reset_can_manager_singleton() -> Generator[None, None, None]:
+def reset_can_manager_singleton() -> Generator[None]:
     """Reset the CAN Manager singleton before and after each test."""
     from cubemars_servo_can.can_manager import CAN_Manager_servo
 
@@ -41,7 +43,7 @@ def reset_can_manager_singleton() -> Generator[None, None, None]:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_session() -> Generator[None, None, None]:
+def cleanup_session() -> Generator[None]:
     """Ensure cleanup at end of test session."""
     yield
     from cubemars_servo_can.can_manager import CAN_Manager_servo

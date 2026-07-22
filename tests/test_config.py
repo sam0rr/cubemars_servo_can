@@ -1,6 +1,8 @@
+from typing import Any
+
 import pytest
-from typing import Dict, Any
-from cubemars_servo_can.config import get_motor_config, MotorConfig
+
+from cubemars_servo_can.config import MotorConfig, get_motor_config
 
 
 def test_default_ak80_9() -> None:
@@ -22,7 +24,7 @@ def test_default_ak40_10_vendor_backed_values() -> None:
 
 
 def test_override_config() -> None:
-    overrides: Dict[str, float] = {"GEAR_RATIO": 50.0}
+    overrides: dict[str, float] = {"GEAR_RATIO": 50.0}
     config: MotorConfig = get_motor_config("AK80-9", custom_config=overrides)
     assert config.GEAR_RATIO == 50.0
     assert config.P_max == 32000.0  # Should remain default
@@ -40,7 +42,7 @@ def test_default_aka60_6() -> None:
 
 
 def test_custom_motor_success() -> None:
-    custom_specs: Dict[str, Any] = {
+    custom_specs: dict[str, Any] = {
         "P_min": -100.0,
         "P_max": 100.0,
         "V_min": -100.0,
@@ -62,7 +64,7 @@ def test_custom_motor_success() -> None:
 
 def test_custom_motor_missing_field() -> None:
     # Missing GEAR_RATIO
-    custom_specs: Dict[str, Any] = {
+    custom_specs: dict[str, Any] = {
         "P_min": -100.0,
         "P_max": 100.0,
         "V_min": -100.0,

@@ -1,21 +1,21 @@
-import can
+import csv
 import math
 import time
-import csv
 import traceback
 import warnings
 from types import TracebackType
-from typing import List, Optional, Dict, Any, TextIO
+from typing import Any, TextIO
 
-from .constants import ERROR_CODES, DEFAULT_LOG_VARIABLES, ControlMode
-from .config import get_motor_config, MotorConfig
-from .motor_state import ServoMotorState, ServoCommand
+import can
+
 from .can_manager import CAN_Manager_servo
+from .config import MotorConfig, get_motor_config
+from .constants import DEFAULT_LOG_VARIABLES, ERROR_CODES, ControlMode
+from .motor_state import ServoCommand, ServoMotorState
 
 
 class CubeMarsServoCAN:
-    """
-    The user-facing class that manages the motor. This class should be
+    """The user-facing class that manages the motor. This class should be
     used in the context of a with as block, in order to safely enter/exit
     control of the motor.
     """
@@ -27,13 +27,12 @@ class CubeMarsServoCAN:
         max_mosfet_temp: float = 70.0,
         overtemp_trip_count: int = 3,
         cooldown_margin_c: float = 2.0,
-        CSV_file: Optional[str] = None,
-        log_vars: Optional[List[str]] = None,
+        CSV_file: str | None = None,
+        log_vars: list[str] | None = None,
         can_channel: str = "can0",
-        config_overrides: Optional[Dict[str, Any]] = None,
+        config_overrides: dict[str, Any] | None = None,
     ) -> None:
-        """
-        Sets up the motor manager. Note the device will not be powered on by this method! You must
+        """Sets up the motor manager. Note the device will not be powered on by this method! You must
         call __enter__, mostly commonly by using a with block, before attempting to control the motor.
 
         Args:
@@ -82,10 +81,10 @@ class CubeMarsServoCAN:
         self._powered_on = False
         self._start_time = time.time()
         self._last_update_time = self._start_time
-        self._last_command_time: Optional[float] = None
+        self._last_command_time: float | None = None
         self._updated = False
         self._command_sent = False
-        self._async_error: Optional[RuntimeError] = None
+        self._async_error: RuntimeError | None = None
         self._overtemp_samples = 0
         self._thermal_guard_active = False
 
@@ -99,12 +98,10 @@ class CubeMarsServoCAN:
 
         self._canman = CAN_Manager_servo(channel=can_channel)
         self._canman.add_motor(self)
-        self.csv_file: Optional[TextIO] = None
+        self.csv_file: TextIO | None = None
 
     def __enter__(self) -> "CubeMarsServoCAN":
-        """
-        Used to safely power the motor on and begin the log file.
-        """
+        """Used to safely power the motor on and begin the log file."""
         print(f"Turning on control for device: {self.device_info_string()}")
         powered_on = False
         try:
@@ -141,17 +138,14 @@ class CubeMarsServoCAN:
         value: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
-        """
-        Used to safely stop the motor and close the log file.
-        """
+        """Used to safely stop the motor and close the log file."""
         self.close()
 
         if etype is not None:
             traceback.print_exception(etype, value, tb)
 
     def close(self) -> None:
-        """
-        Close motor control explicitly.
+        """Close motor control explicitly.
         Safe to call multiple times.
         """
         if not (self._entered or self._powered_on or self.csv_file is not None):
@@ -170,8 +164,7 @@ class CubeMarsServoCAN:
                 self.csv_file = None
 
     def _send_shutdown_command(self) -> None:
-        """
-        Apply final shutdown command.
+        """Apply final shutdown command.
         The library uses a fixed zero-current shutdown command.
         """
         try:
@@ -184,22 +177,17 @@ class CubeMarsServoCAN:
             )
 
     def detach_listener(self) -> None:
-        """
-        Remove this motor's listener from the shared CAN notifier.
-        """
+        """Remove this motor's listener from the shared CAN notifier."""
         self._canman.remove_motor(self)
 
     def close_shared_can_manager(self) -> None:
-        """
-        Close the shared CAN manager and underlying bus.
+        """Close the shared CAN manager and underlying bus.
         This affects all motors attached to the same CAN manager singleton.
         """
         self._canman.close()
 
     def qaxis_current_to_TMotor_current(self, iq: float) -> float:
-        """
-        Convert Q-axis current to T-Motor current.
-        """
+        """Convert Q-axis current to T-Motor current."""
         return (
             iq
             * (self.config.GEAR_RATIO * self.config.Kt_TMotor)
@@ -207,8 +195,7 @@ class CubeMarsServoCAN:
         )
 
     def _update_state_async(self, servo_state: ServoMotorState) -> None:
-        """
-        This method is called by the handler every time a message is recieved on the bus
+        """This method is called by the handler every time a message is recieved on the bus
         from this motor, to store the most recent state information for later.
 
         Args:
@@ -243,17 +230,14 @@ class CubeMarsServoCAN:
         self._updated = True
 
     def _set_listener_error(self, exc: Exception) -> None:
-        """
-        Store listener-thread errors to be raised on the next user-thread update() call.
-        """
+        """Store listener-thread errors to be raised on the next user-thread update() call."""
         self._async_error = RuntimeError(
             f"CAN listener error for device: {self.device_info_string()}: {exc}"
         )
         self._updated = True
 
     def update(self) -> None:
-        """
-        This method is called by the user to synchronize the current state used by the controller/logger
+        """This method is called by the user to synchronize the current state used by the controller/logger
         with the most recent message recieved, as well as to send the current command.
         """
         if not self._entered:
@@ -311,9 +295,7 @@ class CubeMarsServoCAN:
         self._updated = False
 
     def _send_thermal_guard_command(self) -> None:
-        """
-        Emit a non-motion command while pre-trip thermal guard is active.
-        """
+        """Emit a non-motion command while pre-trip thermal guard is active."""
         previous_position = self._command.position
         previous_velocity = self._command.velocity
         previous_current = self._command.current
@@ -349,8 +331,7 @@ class CubeMarsServoCAN:
             self._command.acceleration = previous_acceleration
 
     def _send_command(self) -> None:
-        """
-        Sends a command to the motor depending on what control mode the motor is in. This method
+        """Sends a command to the motor depending on what control mode the motor is in. This method
         is called by update(), and should only be called on its own if you don't want to update the motor state info.
         """
         if self._control_state == ControlMode.DUTY_CYCLE:
@@ -398,53 +379,46 @@ class CubeMarsServoCAN:
     # --- Getters ---
 
     def get_temperature_celsius(self) -> float:
-        """
-        Returns:
-            The most recently updated motor temperature in degrees C.
+        """Returns:
+        The most recently updated motor temperature in degrees C.
         """
         return self._motor_state.temperature
 
     def get_motor_error_code(self) -> int:
-        """
-        Returns:
-            The most recently updated motor error code.
-            Note the program should throw a runtime error before you get a chance to read
-            this value if it is ever anything besides 0.
+        """Returns:
+        The most recently updated motor error code.
+        Note the program should throw a runtime error before you get a chance to read
+        this value if it is ever anything besides 0.
         """
         return self._motor_state.error
 
     def get_current_qaxis_amps(self) -> float:
-        """
-        Returns:
-            The most recently updated qaxis current in amps
+        """Returns:
+        The most recently updated qaxis current in amps
         """
         return self._motor_state.current
 
     def get_output_angle_radians(self) -> float:
-        """
-        Returns:
-            The most recently updated output angle in radians
+        """Returns:
+        The most recently updated output angle in radians
         """
         return self._motor_state.position * self.rad_per_Eang
 
     def get_output_velocity_radians_per_second(self) -> float:
-        """
-        Returns:
-            The most recently updated output velocity in radians per second
+        """Returns:
+        The most recently updated output velocity in radians per second
         """
         return self._motor_state.velocity * self.radps_per_ERPM
 
     def get_output_acceleration_radians_per_second_squared(self) -> float:
-        """
-        Returns:
-            The most recently updated output acceleration in radians per second per second
+        """Returns:
+        The most recently updated output acceleration in radians per second per second
         """
         return self._motor_state.acceleration * self.radps_per_ERPM
 
     def get_output_torque_newton_meters(self) -> float:
-        """
-        Returns:
-            the most recently updated output torque in Nm
+        """Returns:
+        the most recently updated output torque in Nm
         """
         return (
             self.get_current_qaxis_amps()
@@ -455,45 +429,31 @@ class CubeMarsServoCAN:
     # --- Mode Setters ---
 
     def enter_duty_cycle_control(self) -> None:
-        """
-        Must call this to enable sending duty cycle commands.
-        """
+        """Must call this to enable sending duty cycle commands."""
         self._control_state = ControlMode.DUTY_CYCLE
 
     def enter_current_control(self) -> None:
-        """
-        Must call this to enable sending current commands.
-        """
+        """Must call this to enable sending current commands."""
         self._control_state = ControlMode.CURRENT_LOOP
 
     def enter_current_brake_control(self) -> None:
-        """
-        Must call this to enable sending current brake commands.
-        """
+        """Must call this to enable sending current brake commands."""
         self._control_state = ControlMode.CURRENT_BRAKE
 
     def enter_velocity_control(self) -> None:
-        """
-        Must call this to enable sending velocity commands.
-        """
+        """Must call this to enable sending velocity commands."""
         self._control_state = ControlMode.VELOCITY
 
     def enter_position_control(self) -> None:
-        """
-        Must call this to enable position commands.
-        """
+        """Must call this to enable position commands."""
         self._control_state = ControlMode.POSITION
 
     def enter_position_velocity_control(self) -> None:
-        """
-        Must call this to enable sending position commands with specified velocity and accleration limits.
-        """
+        """Must call this to enable sending position commands with specified velocity and accleration limits."""
         self._control_state = ControlMode.POSITION_VELOCITY
 
     def enter_idle_mode(self) -> None:
-        """
-        Enter the idle state, where duty cycle is set to 0. (This is the default state.)
-        """
+        """Enter the idle state, where duty cycle is set to 0. (This is the default state.)"""
         self._control_state = ControlMode.IDLE
 
     # --- Command Setters ---
@@ -501,8 +461,7 @@ class CubeMarsServoCAN:
     def set_output_angle_radians(
         self, pos: float, vel: float = 0.0, acc: float = 0.0
     ) -> None:
-        """
-        Update the current command to the desired position, when in position or position-velocity mode.
+        """Update the current command to the desired position, when in position or position-velocity mode.
         Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
         which will be sent when update() is called.
 
@@ -549,8 +508,7 @@ class CubeMarsServoCAN:
             )
 
     def set_duty_cycle_percent(self, duty: float) -> None:
-        """
-        Used for duty cycle mode, to set desired duty cycle.
+        """Used for duty cycle mode, to set desired duty cycle.
         Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
         which will be sent when update() is called.
 
@@ -569,8 +527,7 @@ class CubeMarsServoCAN:
             self._command.duty = duty
 
     def set_output_velocity_radians_per_second(self, vel: float) -> None:
-        """
-        Used for velocity mode to set output velocity command.
+        """Used for velocity mode to set output velocity command.
         Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
         which will be sent when update() is called.
 
@@ -595,8 +552,7 @@ class CubeMarsServoCAN:
         self._command.velocity = vel / self.radps_per_ERPM
 
     def set_motor_current_qaxis_amps(self, current: float) -> None:
-        """
-        Used for current mode to set current command.
+        """Used for current mode to set current command.
         Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
         which will be sent when update() is called.
 
@@ -620,8 +576,7 @@ class CubeMarsServoCAN:
         self._command.current = current
 
     def set_output_torque_newton_meters(self, torque: float) -> None:
-        """
-        Used for current mode to set current, based on desired torque.
+        """Used for current mode to set current, based on desired torque.
         If a more complicated torque model is available for the motor, that will be used.
         Otherwise it will just use the motor's torque constant.
 
@@ -640,8 +595,7 @@ class CubeMarsServoCAN:
     # --- Motor-Side Wrappers ---
 
     def set_motor_torque_newton_meters(self, torque: float) -> None:
-        """
-        Wrapper of set_output_torque that accounts for gear ratio to control motor-side torque
+        """Wrapper of set_output_torque that accounts for gear ratio to control motor-side torque
 
         Args:
             torque: The desired motor-side torque in Nm.
@@ -650,8 +604,7 @@ class CubeMarsServoCAN:
         self.set_output_torque_newton_meters(torque * self.config.GEAR_RATIO)
 
     def set_motor_angle_radians(self, pos: float) -> None:
-        """
-        Wrapper for set_output_angle that accounts for gear ratio to control motor-side angle
+        """Wrapper for set_output_angle that accounts for gear ratio to control motor-side angle
 
         Args:
             pos: The desired motor-side position in rad.
@@ -659,8 +612,7 @@ class CubeMarsServoCAN:
         self.set_output_angle_radians(pos / self.config.GEAR_RATIO, 0.0, 0.0)
 
     def set_motor_velocity_radians_per_second(self, vel: float) -> None:
-        """
-        Wrapper for set_output_velocity that accounts for gear ratio to control motor-side velocity
+        """Wrapper for set_output_velocity that accounts for gear ratio to control motor-side velocity
 
         Args:
             vel: The desired motor-side velocity in rad/s.
@@ -668,8 +620,7 @@ class CubeMarsServoCAN:
         self.set_output_velocity_radians_per_second(vel / self.config.GEAR_RATIO)
 
     def get_motor_angle_radians(self) -> float:
-        """
-        Wrapper for get_output_angle that accounts for gear ratio to get motor-side angle
+        """Wrapper for get_output_angle that accounts for gear ratio to get motor-side angle
 
         Returns:
             The most recently updated motor-side angle in rad.
@@ -677,8 +628,7 @@ class CubeMarsServoCAN:
         return self._motor_state.position * self.rad_per_Eang * self.config.GEAR_RATIO
 
     def get_motor_velocity_radians_per_second(self) -> float:
-        """
-        Wrapper for get_output_velocity that accounts for gear ratio to get motor-side velocity
+        """Wrapper for get_output_velocity that accounts for gear ratio to get motor-side velocity
 
         Returns:
             The most recently updated motor-side velocity in rad/s.
@@ -686,8 +636,7 @@ class CubeMarsServoCAN:
         return self._motor_state.velocity * self.radps_per_ERPM * self.config.GEAR_RATIO
 
     def get_motor_acceleration_radians_per_second_squared(self) -> float:
-        """
-        Wrapper for get_output_acceleration that accounts for gear ratio to get motor-side acceleration
+        """Wrapper for get_output_acceleration that accounts for gear ratio to get motor-side acceleration
 
         Returns:
             The most recently updated motor-side acceleration in rad/s/s.
@@ -699,8 +648,7 @@ class CubeMarsServoCAN:
         )
 
     def get_motor_torque_newton_meters(self) -> float:
-        """
-        Wrapper for get_output_torque that accounts for gear ratio to get motor-side torque
+        """Wrapper for get_output_torque that accounts for gear ratio to get motor-side torque
 
         Returns:
             The most recently updated motor-side torque in Nm.
@@ -724,8 +672,7 @@ class CubeMarsServoCAN:
         return f"{self.type}  ID: {self.ID}"
 
     def check_can_connection(self) -> bool:
-        """
-        Checks the motor's connection by attempting to send 10 startup messages.
+        """Checks the motor's connection by attempting to send 10 startup messages.
         If it gets responses, then the connection is confirmed.
 
         Returns:

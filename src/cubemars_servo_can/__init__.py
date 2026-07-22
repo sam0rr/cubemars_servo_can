@@ -1,5 +1,5 @@
-from .servo_can import CubeMarsServoCAN
-from .config import get_motor_config, MotorConfig
+from .config import MotorConfig, get_motor_config
 from .constants import ControlMode
+from .servo_can import CubeMarsServoCAN
 
-__all__ = ["CubeMarsServoCAN", "get_motor_config", "MotorConfig", "ControlMode"]
+__all__ = ["ControlMode", "CubeMarsServoCAN", "MotorConfig", "get_motor_config"]
