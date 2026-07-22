@@ -1,176 +1,153 @@
+"""Typed motor and runtime configuration."""
+
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+
+from .constants import DEFAULT_LOG_FIELDS, LogField, MotorModel
 
 
-@dataclass
+@dataclass(frozen=True, kw_only=True, slots=True)
 class MotorConfig:
-    """Configuration for a specific motor type.
-    All fields are mandatory to ensure safe operation.
-    """
+    """Physical conversion factors and safety limits for one actuator model."""
 
-    # Position limits (rad or deg, depending on context)
-    # The original library uses int32 for position, where 32000 corresponds to ~3200 degrees.
-    # Note: These values are checked against the absolute value of the position command.
-    P_min: float
-    P_max: float
+    model_name: str
+    min_output_position_radians: float
+    max_output_position_radians: float
+    min_velocity_erpm: float
+    max_velocity_erpm: float
+    min_current_amps: float
+    max_current_amps: float
+    min_output_torque_newton_meters: float
+    max_output_torque_newton_meters: float
+    effective_torque_constant_newton_meters_per_amp: float
+    gear_ratio: float
+    pole_pairs: int
+    supports_persistent_origin: bool
 
-    # Velocity limits (RPM electrical speed or similar)
-    # The original library uses these values to clamp velocity commands.
-    # Electrical RPM = Mechanical RPM * Pole Pairs
-    V_min: float
-    V_max: float
-
-    # Current limits (Amps)
-    # Note: The controller typically has a hard limit (e.g. 60A), but these software limits
-    # are set lower for safety (e.g. 15A).
-    # Checked against the command current.
-    Curr_min: float
-    Curr_max: float
-
-    # Torque limits (Nm)
-    # Used to clamp torque commands.
-    T_min: float
-    T_max: float
-
-    # Motor Constants
-    # Kt_TMotor: Torque constant provided by T-Motor website (actually 1/Kvll)
-    # Current_Factor: Calibration factor for current control (Default: 0.59)
-    # Kt_actual: The actual torque constant used for calculations
-    Kt_TMotor: float
-    Current_Factor: float
-    Kt_actual: float
-
-    # Gearbox and Pole Pairs
-    # GEAR_RATIO: The mechanical gear reduction ratio (e.g. 9 for 9:1 reduction)
-    # NUM_POLE_PAIRS: Number of magnet pole pairs in the rotor
-    GEAR_RATIO: float
-    NUM_POLE_PAIRS: int
-
-    # Usage flags
-    # Use_derived_torque_constants: Set to True if you have a better model for torque calculation.
-    # Default is False (uses simple Kt * Current model).
-    Use_derived_torque_constants: bool
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MotorConfig":
-        """Create a config object from a dictionary.
-        Raises TypeError or KeyError if required fields are missing.
-        """
-        # Filter strictly for known fields, but then allow standard dataclass validation
-        # to raise errors if anything is missing.
-        known_fields = cls.__annotations__.keys()
-
-        # Check for missing keys
-        missing = [key for key in known_fields if key not in data]
-        if missing:
-            raise ValueError(
-                f"Invalid Motor Configuration. Missing required fields: {missing}"
-            )
-
-        filtered_data = {k: v for k, v in data.items() if k in known_fields}
-        return cls(**filtered_data)
+    def __post_init__(self) -> None:
+        """Reject unsafe or internally inconsistent configurations."""
+        if not self.model_name.strip():
+            raise ValueError("model_name must not be empty")
+        ranges = (
+            (
+                self.min_output_position_radians,
+                self.max_output_position_radians,
+                "output position",
+            ),
+            (self.min_velocity_erpm, self.max_velocity_erpm, "velocity"),
+            (self.min_current_amps, self.max_current_amps, "current"),
+            (
+                self.min_output_torque_newton_meters,
+                self.max_output_torque_newton_meters,
+                "output torque",
+            ),
+        )
+        for minimum, maximum, label in ranges:
+            if minimum >= maximum:
+                raise ValueError(f"Minimum {label} must be less than maximum {label}")
+        if self.effective_torque_constant_newton_meters_per_amp <= 0.0:
+            raise ValueError("Torque constant must be positive")
+        if self.gear_ratio <= 0.0:
+            raise ValueError("gear_ratio must be positive")
+        if self.pole_pairs <= 0:
+            raise ValueError("pole_pairs must be positive")
 
 
-# Default definitions for known motors
-# Values are taken from the original TMotorCANControl library
-DEFAULTS: dict[str, dict[str, Any]] = {
-    "AK10-9": {
-        "P_min": -32000.0,  # -3200 deg
-        "P_max": 32000.0,  # 3200 deg
-        "V_min": -100000.0,  # -100000 rpm electrical speed
-        "V_max": 100000.0,  # 100000 rpm electrical speed
-        "Curr_min": -1500.0,  # -60A is the acutal limit but set to -15A
-        "Curr_max": 1500.0,  # 60A is the acutal limit but set to 15A
-        "T_min": -15.0,  # NM
-        "T_max": 15.0,  # NM
-        "Kt_TMotor": 0.16,  # from TMotor website (actually 1/Kvll)
-        "Current_Factor": 0.59,  # UNTESTED CONSTANT!
-        "Kt_actual": 0.206,  # UNTESTED CONSTANT!
-        "GEAR_RATIO": 9.0,
-        "NUM_POLE_PAIRS": 21,  # Assumed based on AK80-9 similarity
-        "Use_derived_torque_constants": False,  # true if you have a better model
-    },
-    "AK80-9": {
-        "P_min": -32000.0,  # -3200 deg
-        "P_max": 32000.0,  # 3200 deg
-        "V_min": -32000.0,  # -320000 rpm electrical speed
-        "V_max": 32000.0,  # 320000 rpm electrical speed
-        "Curr_min": -1500.0,  # -60A is the acutal limit but set to -15A
-        "Curr_max": 1500.0,  # 60A is the acutal limit but set to 15A
-        "T_min": -30.0,  # NM
-        "T_max": 30.0,  # NM
-        "Kt_TMotor": 0.091,  # from TMotor website (actually 1/Kvll)
-        "Current_Factor": 0.59,
-        "Kt_actual": 0.115,
-        "GEAR_RATIO": 9.0,
-        "NUM_POLE_PAIRS": 21,
-        "Use_derived_torque_constants": False,  # true if you have a better model
-    },
-    "AK40-10": {
-        "P_min": -32000.0,  # -3200 deg
-        "P_max": 32000.0,  # 3200 deg
-        "V_min": -60000.0,  # Vendor McParams limit
-        "V_max": 60000.0,  # Vendor McParams limit
-        "Curr_min": -730.0,
-        "Curr_max": 730.0,  # Actuator peak-current cap (7.3A)
-        "T_min": -4.1,
-        "T_max": 4.1,  # Actuator peak torque
-        "Kt_TMotor": 0.056,
-        "Current_Factor": 0.59,  # UNTESTED CONSTANT!
-        "Kt_actual": 0.05616438356164384,  # Maps 7.3A to 4.1Nm in this library model
-        "GEAR_RATIO": 10.0,
-        "NUM_POLE_PAIRS": 14,  # Matches CubeMars speed spec / ERPM divisor
-        "Use_derived_torque_constants": False,  # true if you have a better model
-    },
-    "AKA60-6": {
-        "P_min": -32000.0,  # Protocol telemetry range
-        "P_max": 32000.0,
-        "V_min": -50000.0,  # Vendor McParams limit
-        "V_max": 50000.0,  # Vendor McParams limit
-        "Curr_min": -6000.0,
-        "Curr_max": 6000.0,  # Vendor McParams limit (60A)
-        "T_min": -9.0,
-        "T_max": 9.0,  # Actuator peak torque
-        "Kt_TMotor": 0.11937,
-        "Current_Factor": 0.59,
-        "Kt_actual": 0.134,  # Maps 11.2A to 9Nm in this library model
-        "GEAR_RATIO": 6.0,
-        "NUM_POLE_PAIRS": 14,  # Matches vendor encoder/motor-pole divisor
-        "Use_derived_torque_constants": False,
-    },
+@dataclass(frozen=True, kw_only=True, slots=True)
+class ServoConfig:
+    """CAN, thermal-safety, connection, and logging settings."""
+
+    can_channel: str = "can0"
+    max_driver_temperature_celsius: float = 70.0
+    overtemperature_trip_count: int = 3
+    cooldown_margin_celsius: float = 2.0
+    connection_timeout_seconds: float = 0.25
+    connection_probe_count: int = 3
+    csv_log_path: Path | None = None
+    log_fields: tuple[LogField, ...] = DEFAULT_LOG_FIELDS
+
+    def __post_init__(self) -> None:
+        """Validate runtime settings before any CAN resources are opened."""
+        if not self.can_channel.strip():
+            raise ValueError("can_channel must not be empty")
+        if self.overtemperature_trip_count < 1:
+            raise ValueError("overtemperature_trip_count must be at least 1")
+        if self.cooldown_margin_celsius < 0.0:
+            raise ValueError("cooldown_margin_celsius must not be negative")
+        if self.connection_timeout_seconds <= 0.0:
+            raise ValueError("connection_timeout_seconds must be positive")
+        if self.connection_probe_count < 1:
+            raise ValueError("connection_probe_count must be at least 1")
+        if len(set(self.log_fields)) != len(self.log_fields):
+            raise ValueError("log_fields must not contain duplicates")
+
+
+_MOTOR_CONFIGS = {
+    MotorModel.AK10_9: MotorConfig(
+        model_name=MotorModel.AK10_9,
+        min_output_position_radians=-531.965,
+        max_output_position_radians=531.965,
+        min_velocity_erpm=-100_000.0,
+        max_velocity_erpm=100_000.0,
+        min_current_amps=-15.0,
+        max_current_amps=15.0,
+        min_output_torque_newton_meters=-15.0,
+        max_output_torque_newton_meters=15.0,
+        effective_torque_constant_newton_meters_per_amp=0.206,
+        gear_ratio=9.0,
+        pole_pairs=21,
+        supports_persistent_origin=True,
+    ),
+    MotorModel.AK40_10: MotorConfig(
+        model_name=MotorModel.AK40_10,
+        min_output_position_radians=-718.078,
+        max_output_position_radians=718.078,
+        min_velocity_erpm=-60_000.0,
+        max_velocity_erpm=60_000.0,
+        min_current_amps=-7.3,
+        max_current_amps=7.3,
+        min_output_torque_newton_meters=-4.1,
+        max_output_torque_newton_meters=4.1,
+        effective_torque_constant_newton_meters_per_amp=0.05616438356164384,
+        gear_ratio=10.0,
+        pole_pairs=14,
+        supports_persistent_origin=True,
+    ),
+    MotorModel.AK80_9: MotorConfig(
+        model_name=MotorModel.AK80_9,
+        min_output_position_radians=-531.965,
+        max_output_position_radians=531.965,
+        min_velocity_erpm=-32_000.0,
+        max_velocity_erpm=32_000.0,
+        min_current_amps=-15.0,
+        max_current_amps=15.0,
+        min_output_torque_newton_meters=-15.0,
+        max_output_torque_newton_meters=15.0,
+        effective_torque_constant_newton_meters_per_amp=0.115,
+        gear_ratio=9.0,
+        pole_pairs=21,
+        supports_persistent_origin=True,
+    ),
+    MotorModel.AKA60_6: MotorConfig(
+        model_name=MotorModel.AKA60_6,
+        min_output_position_radians=-1_196.797,
+        max_output_position_radians=1_196.797,
+        min_velocity_erpm=-50_000.0,
+        max_velocity_erpm=50_000.0,
+        min_current_amps=-11.2,
+        max_current_amps=11.2,
+        min_output_torque_newton_meters=-9.0,
+        max_output_torque_newton_meters=9.0,
+        effective_torque_constant_newton_meters_per_amp=0.134,
+        gear_ratio=6.0,
+        pole_pairs=14,
+        supports_persistent_origin=True,
+    ),
 }
 
 
-def get_motor_config(
-    motor_type: str, custom_config: dict[str, Any] | None = None
-) -> MotorConfig:
-    """Retrieve the configuration for a motor.
-
-    Args:
-        motor_type: The name of the motor (e.g., 'AK80-9').
-        custom_config: A dictionary of overrides. If provided, these values
-                       will replace the defaults.
-
-    Returns:
-        A MotorConfig object.
-
-    Raises:
-        ValueError: If the motor type is unknown and no valid custom config is provided,
-                    or if the resulting configuration is missing required fields.
-    """
-    # Start with the default config for the type
-    if motor_type in DEFAULTS:
-        base_data = DEFAULTS[motor_type].copy()
-    elif custom_config:
-        # If it's a new motor type, start empty and rely on custom_config to fill ALL fields
-        base_data = {}
-    else:
-        raise ValueError(
-            f"Unknown motor type '{motor_type}' and no custom config provided."
-        )
-
-    # Apply overrides if provided
-    if custom_config:
-        base_data.update(custom_config)
-
-    return MotorConfig.from_dict(base_data)
+def get_motor_config(model: MotorModel) -> MotorConfig:
+    """Return the immutable built-in configuration for ``model``."""
+    if not isinstance(model, MotorModel):
+        raise TypeError("model must be a MotorModel")
+    return _MOTOR_CONFIGS[model]

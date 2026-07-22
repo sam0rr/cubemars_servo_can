@@ -1,53 +1,14 @@
-# Usage Guide
+# Usage and safety
 
-This guide covers how to initialize the motor and use the various control modes available.
+## Prepare SocketCAN
 
----
-
-## Basic Initialization
-
-The library uses a context manager (`with` block) to safely handle the connection, power-on sequence, and shutdown.
-
-Use one consistent no-`sudo` app runtime flow:
-
-1. Configure your CAN interface (`can0`, `can1`, etc.) at boot with a root-managed service.
-2. Run the Python app as a normal user.
-3. Keep application code focused on motor control only.
-
-Default interface behavior:
-
-- `CubeMarsServoCAN(...)` defaults to `can0`.
-- You only need to pass `can_channel` when using another interface (for example `can1`).
-
-### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
-
-Reference board and vendor docs:
-
-- https://www.waveshare.com/wiki/RS485_CAN_HAT
-
-Configure overlays in `/boot/firmware/config.txt`:
-
-```ini
-dtparam=spi=on
-dtoverlay=mcp2515-can0,oscillator=12000000,interrupt=25,spimaxfrequency=2000000
-```
-
-Reboot after editing `config.txt` so the overlay is applied:
-
-```bash
-sudo reboot
-```
-
-### Boot-Time Interface Setup (systemd)
-
-Create `/etc/systemd/system/can0.service` (or `can1.service` if using `can1`):
+Bring the interface up outside the application. A typical systemd unit for the
+Waveshare RS485 CAN HAT is:
 
 ```ini
 [Unit]
 Description=Bring up SocketCAN can0
 After=network-pre.target
-Before=network.target
-Wants=network.target
 
 [Service]
 Type=oneshot
@@ -61,198 +22,109 @@ ExecStop=/bin/sh -c 'ip link set can0 down'
 WantedBy=multi-user.target
 ```
 
-Enable and verify:
+Enable it once with `sudo systemctl enable --now can0.service`. The library never
+runs privileged host commands.
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now can0.service
-ip -details link show can0
-```
+## Control loop
 
-This runs with root at boot, so your Python app can run without `sudo`.
-If your interface is `can1`, replace `can0` with `can1` in both the service file and commands above.
-
-### Application Example
+Choose a mode, set its target, and call `update()` on every control-loop cycle.
+Command setters update the pending target; `update()` synchronizes safety state,
+sends the selected command, and writes an optional log row.
 
 ```python
-from cubemars_servo_can import CubeMarsServoCAN
-import time
+"""Exercise the typed Servo Mode command API."""
 
-# 1. Start motor control (interface must already be up via boot service).
-# can_channel defaults to "can0", so it can be omitted.
-with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1) as motor:
-    print("Motor Connected!")
-
-    # 2. Control Logic goes here
-    # ...
-
-    time.sleep(1)
-    # Motor automatically powers off when exiting this block
-```
-
-If your interface is not `can0`, pass it explicitly:
-
-```python
-with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can1') as motor:
-    ...
-```
-
-**Run it:**
-
-```bash
-uv run your_script.py
-```
-
----
-
-## Control Modes
-
-You must explicitly enter a control mode before sending commands for that mode.
-
-| Mode API                            | Sent CAN Command    |
-| ----------------------------------- | ------------------- |
-| `enter_duty_cycle_control()`        | `SET_DUTY`          |
-| `enter_current_control()`           | `SET_CURRENT`       |
-| `enter_current_brake_control()`     | `SET_CURRENT_BRAKE` |
-| `enter_velocity_control()`          | `SET_RPM`           |
-| `enter_position_control()`          | `SET_POS`           |
-| `enter_position_velocity_control()` | `SET_POS_SPD`       |
-
-### 1. Position Mode (Most Common)
-
-Moves the motor to a specific angle (in radians).
-
-```python
-motor.enter_position_control()
-
-# Move to 180 degrees (3.14 radians)
-motor.set_motor_angle_radians(3.14)
-motor.update()
-```
-
-### 2. Velocity Mode
-
-Controls the motor speed (in rad/s).
-
-```python
-motor.enter_velocity_control()
-
-# Spin at 10 rad/s (~95 RPM)
-motor.set_motor_velocity_radians_per_second(10.0)
-motor.update()
-```
-
-### 3. Current Loop Mode (Torque)
-
-Controls the torque directly.
-
-```python
-motor.enter_current_control()
-
-# Apply 0.5 Nm of torque
-# The library automatically calculates the required current based on motor Kt
-motor.set_motor_torque_newton_meters(0.5)
-motor.update()
-```
-
-### 4. Position-Velocity Mode (Trapezoidal)
-
-Moves to a position but respects velocity and acceleration limits. Useful for smooth movements.
-
-```python
-motor.enter_position_velocity_control()
-
-# Target: 3.14 rad
-# Max Speed: 5.0 rad/s
-# Max Accel: 10.0 rad/s^2
-motor.set_output_angle_radians(3.14, 5.0, 10.0)
-motor.update()
-```
-
-### 5. Current Brake Mode
-
-Applies brake current to hold position.
-
-```python
-motor.enter_current_brake_control()
-
-# Brake current must be non-negative
-motor.set_motor_current_qaxis_amps(2.0)
-motor.update()
-```
-
-### 6. Duty Cycle Mode
-
-Controls PWM directly. Mostly for testing.
-
-```python
-motor.enter_duty_cycle_control()
-motor.set_duty_cycle_percent(0.1) # 10% power
-motor.update()
-```
-
-### 7. Zeroing
-
-Sets the current physical position as the new "0" (origin).
-
-```python
-motor.set_zero_position()
-```
-
-## Safety and Limits
-
-- Position, velocity, current, and torque commands are checked against motor config limits.
-- Position-velocity mode validates target velocity and acceleration before frame packing.
-- Current brake mode rejects negative current values.
-- Command setters are strict: invalid ranges raise `RuntimeError` instead of being silently clamped.
-- `max_mosfet_temp` defaults to `70.0`.
-- `update()` raises after `overtemp_trip_count` consecutive over-limit samples (default `3`).
-- A pre-trip thermal guard activates on over-limit telemetry and sends conservative hold/zero commands until cooldown hysteresis clears.
-- Thermal guard clears only when temperature drops to `max_mosfet_temp - cooldown_margin_c`.
-- Motor faults reported from CAN listener are raised on the next `update()` call.
-- `with CubeMarsServoCAN(...)` performs connection validation on entry.
-- `__exit__` / `close()` send a final zero-current command (`SET_CURRENT 0.0A`) for shutdown.
-
-### Runtime Safety Options
-
-```python
-motor = CubeMarsServoCAN(
-    motor_type="AK80-9",
-    motor_ID=1,
-    overtemp_trip_count=3,
-    cooldown_margin_c=2.0,
+from cubemars_servo_can import (
+    ControlMode,
+    CubeMarsServoCan,
+    MotorModel,
+    OriginMode,
+    ServoConfig,
 )
+
+runtime = ServoConfig(can_channel="can0")
+
+with CubeMarsServoCan(
+    motor=MotorModel.AK80_9,
+    motor_id=1,
+    servo_config=runtime,
+) as motor:
+    motor.set_origin(OriginMode.TEMPORARY)
+
+    motor.set_control_mode(ControlMode.DUTY_CYCLE)
+    motor.set_duty_cycle(0.05)
+    motor.update()
+
+    motor.set_control_mode(ControlMode.Q_AXIS_CURRENT)
+    motor.set_q_axis_current_amps(0.5)
+    motor.set_output_torque(0.5)
+    motor.update()
+
+    motor.set_control_mode(ControlMode.CURRENT_BRAKE)
+    motor.set_q_axis_current_amps(1.0)
+    motor.update()
+
+    motor.set_control_mode(ControlMode.VELOCITY)
+    motor.set_output_velocity(1.0)
+    motor.set_motor_velocity(9.0)
+    motor.update()
+
+    motor.set_control_mode(ControlMode.POSITION)
+    motor.set_output_position(0.25)
+    motor.set_motor_position(2.25)
+    motor.update()
+
+    motor.set_control_mode(ControlMode.POSITION_VELOCITY)
+    motor.set_output_position(
+        0.5,
+        velocity_radians_per_second=1.0,
+        acceleration_radians_per_second_squared=2.0,
+    )
+    motor.update()
+
+    motor.set_control_mode(ControlMode.IDLE)
+    motor.update()
 ```
 
-- `overtemp_trip_count`: consecutive over-limit samples required before hard trip.
-- `cooldown_margin_c`: cooldown margin required before guard releases.
+All position and velocity methods use radians. Torque uses newton-metres and
+current uses amperes. Methods prefixed with `set_output_` address the gearbox
+output; methods prefixed with `set_motor_` address the motor side.
 
-### Explicit Cleanup
+## Telemetry
 
-You can also manage cleanup without a `with` block:
+After a valid status frame arrives, explicit-unit read-only properties expose:
 
-```python
-motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
+- `output_position_radians`
+- `output_velocity_radians_per_second`
+- `output_acceleration_radians_per_second_squared`
+- `output_torque_newton_meters`
+- the corresponding `motor_*` properties
+- `q_axis_current_amps`
+- `temperature_celsius`
+- `fault_code`
 
-# ...
+Telemetry is updated on the CAN notifier thread under a lock. Acceleration is
+derived from consecutive monotonic timestamps.
 
-motor.close()
-motor.detach_listener()
-motor.close_shared_can_manager()
-```
+## Safety behavior
 
-## Telemetry (Reading State)
+- Commands outside configured position, ERPM, current, or torque limits raise
+  `ValueError`; they are never silently clamped.
+- Commands issued in the wrong mode raise `ControlModeError`.
+- Driver fault codes raise `MotorFaultError` on the next `update()`.
+- The first over-temperature sample activates a guard. Current-producing modes
+  receive zero current, while position modes hold the latest reported position.
+- The configured consecutive hot-sample count raises `MotorFaultError`.
+- The guard clears only below the threshold minus the cooldown margin.
+- Listener decoding failures are surfaced as `MotorConnectionError` from the user
+  thread.
+- `close()` is idempotent and always attempts final zero current.
 
-You can read the motor state at any time after calling `motor.update()`.
+No `__del__` cleanup is used. Keep each motor in a `with` block, or call `close()`
+explicitly in application-owned cleanup.
 
-```python
-motor.update()
+## Multiple motors and channels
 
-print(f"Position: {motor.position:.3f} rad")
-print(f"Velocity: {motor.velocity:.3f} rad/s")
-print(f"Current:  {motor.current_qaxis:.3f} A")
-print(f"Torque:   {motor.torque:.3f} Nm")
-print(f"Temp:     {motor.temperature:.1f} °C")
-```
-
----
+Controllers using the same `can_channel` share one bus and notifier. Their motor
+IDs must be unique. A different channel gets an independent transport. The bus is
+closed when the last registered motor on that channel closes.

@@ -1,50 +1,73 @@
-from enum import IntEnum
-from typing import Final
+"""Public enumerations used by CubeMars Servo CAN."""
+
+from enum import Enum, IntEnum, StrEnum
 
 
-class ControlMode(IntEnum):
-    """Control states for the servo motor.
-    Using IntEnum allows these to be directly used in integer comparisons/bitwise operations if needed.
-    """
+class ControlMode(Enum):
+    """Available Servo Mode control strategies."""
 
-    DUTY_CYCLE = 0
-    CURRENT_LOOP = 1
-    CURRENT_BRAKE = 2
-    VELOCITY = 3
-    POSITION = 4
-    SET_ORIGIN = 5
-    POSITION_VELOCITY = 6
-    IDLE = 7
+    IDLE = "idle"
+    DUTY_CYCLE = "duty_cycle"
+    Q_AXIS_CURRENT = "q_axis_current"
+    CURRENT_BRAKE = "current_brake"
+    VELOCITY = "velocity"
+    POSITION = "position"
+    POSITION_VELOCITY = "position_velocity"
 
 
-# CAN Command IDs
-# These are the sub-indices used in the CAN arbitration ID to specify the command type.
-CAN_PACKET_ID: Final[dict[str, int]] = {
-    "SET_DUTY": 0,  # Duty cycle mode
-    "SET_CURRENT": 1,  # Current loop mode
-    "SET_CURRENT_BRAKE": 2,  # Current brake mode
-    "SET_RPM": 3,  # Velocity mode
-    "SET_POS": 4,  # Position loop mode
-    "SET_ORIGIN_HERE": 5,  # Set origin mode
-    "SET_POS_SPD": 6,  # Position velocity loop mode
+class OriginMode(IntEnum):
+    """Origin operations defined by the CubeMars Servo protocol."""
+
+    TEMPORARY = 0
+    PERSISTENT = 1
+    RESTORE_DEFAULT = 2
+
+
+class LogField(StrEnum):
+    """Telemetry fields available in CSV logs."""
+
+    OUTPUT_POSITION_RADIANS = "output_position_radians"
+    OUTPUT_VELOCITY_RADIANS_PER_SECOND = "output_velocity_radians_per_second"
+    Q_AXIS_CURRENT_AMPS = "q_axis_current_amps"
+    TEMPERATURE_CELSIUS = "temperature_celsius"
+
+
+class MotorModel(StrEnum):
+    """CubeMars actuator models with built-in safety limits."""
+
+    AK10_9 = "AK10-9"
+    AK40_10 = "AK40-10"
+    AK80_9 = "AK80-9"
+    AKA60_6 = "AKA60-6"
+
+
+class _PacketId(IntEnum):
+    """Servo Mode command and status function identifiers."""
+
+    SET_DUTY = 0x00
+    SET_CURRENT = 0x01
+    SET_CURRENT_BRAKE = 0x02
+    SET_VELOCITY = 0x03
+    SET_POSITION = 0x04
+    SET_ORIGIN = 0x05
+    SET_POSITION_VELOCITY = 0x06
+    STATUS = 0x29
+
+
+DEFAULT_LOG_FIELDS = (
+    LogField.OUTPUT_POSITION_RADIANS,
+    LogField.OUTPUT_VELOCITY_RADIANS_PER_SECOND,
+    LogField.Q_AXIS_CURRENT_AMPS,
+    LogField.TEMPERATURE_CELSIUS,
+)
+
+FAULT_DESCRIPTIONS = {
+    0: "no fault",
+    1: "over-temperature fault",
+    2: "over-current fault",
+    3: "over-voltage fault",
+    4: "under-voltage fault",
+    5: "encoder fault",
+    6: "MOSFET over-temperature fault",
+    7: "motor stall fault",
 }
-
-# Error Codes
-# Mapping from the motor's error byte to a human-readable description.
-ERROR_CODES: Final[dict[int, str]] = {
-    0: "No Error",
-    1: "Over temperature fault",
-    2: "Over current fault",
-    3: "Over voltage fault",
-    4: "Under voltage fault",
-    5: "Encoder fault",
-    6: "Phase current unbalance fault (The hardware may be damaged)",
-}
-
-# Default variables to be logged to CSV
-DEFAULT_LOG_VARIABLES: Final[list[str]] = [
-    "motor_position",
-    "motor_speed",
-    "motor_current",
-    "motor_temperature",
-]
