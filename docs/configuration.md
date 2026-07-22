@@ -35,8 +35,9 @@ runtime = ServoConfig(
     max_driver_temperature_celsius=65.0,
     overtemperature_trip_count=3,
     cooldown_margin_celsius=3.0,
-    connection_timeout_seconds=0.5,
+    connection_timeout_seconds=1.5,
     connection_probe_count=3,
+    telemetry_timeout_seconds=1.5,
     csv_log_path=Path("motor-1.csv"),
     log_fields=(
         LogField.OUTPUT_POSITION_RADIANS,

@@ -18,6 +18,8 @@
 - Made construction side-effect free and context entry transactional.
 - Added typed telemetry/command models, monotonic acceleration, structured logging,
   typed exceptions, explicit CSV fields, and deterministic zero-current shutdown.
+- Latched transient driver faults and blocked commands when status telemetry becomes
+  stale.
 - Retained and simplified the consecutive-sample thermal guard with cooldown
   hysteresis.
 

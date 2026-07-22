@@ -89,11 +89,13 @@ def test_transport_wraps_open_notifier_and_send_failures(
 
     can_harness.fail_open = False
     can_harness.fail_notifier = True
+    can_harness.fail_shutdown = True
     with pytest.raises(CanConnectionError, match="start the CAN notifier"):
         _ChannelTransport(channel="vcan0")
     assert can_harness.bus is not None
     assert can_harness.bus.shutdown_count == 1
 
+    can_harness.fail_shutdown = False
     can_harness.fail_notifier = False
     transport = _ChannelTransport(channel="vcan0")
     can_harness.fail_send = True

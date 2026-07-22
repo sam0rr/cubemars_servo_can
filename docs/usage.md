@@ -118,6 +118,9 @@ derived from consecutive monotonic timestamps.
 - The guard clears only below the threshold minus the cooldown margin.
 - Listener decoding failures are surfaced as `MotorConnectionError` from the user
   thread.
+- Missing status telemetry raises `MotorConnectionError` before another command is
+  sent; `telemetry_timeout_seconds` defaults to 1.5 seconds for 1 Hz uploads.
+- Transient nonzero driver faults remain latched until `update()` consumes them.
 - `close()` is idempotent and always attempts final zero current.
 
 No `__del__` cleanup is used. Keep each motor in a `with` block, or call `close()`
