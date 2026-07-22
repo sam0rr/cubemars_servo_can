@@ -42,6 +42,8 @@ def encode_current_brake(*, motor_id: int, current_amps: float) -> tuple[int, by
     """Encode a non-negative current-brake command."""
     if current_amps < 0.0:
         raise ValueError("Brake current must not be negative")
+    if current_amps > 60.0:
+        raise ValueError("Brake current must not exceed the 60 A protocol limit")
     return _scaled_int32_frame(
         motor_id=motor_id,
         packet_id=_PacketId.SET_CURRENT_BRAKE,

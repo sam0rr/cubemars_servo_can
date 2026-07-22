@@ -54,6 +54,7 @@ class _ChannelTransport:
         self.channel = channel
         self._lock = threading.RLock()
         self._listeners: dict[int, _MotorListener] = {}
+        self._quarantined_motor_ids: set[int] = set()
         self._closed = False
         try:
             self._bus = can.interface.Bus(channel=channel, interface="socketcan")
@@ -76,9 +77,9 @@ class _ChannelTransport:
 
     @property
     def motor_count(self) -> int:
-        """Return the number of registered motor identifiers."""
+        """Return the number of active, non-quarantined motor identifiers."""
         with self._lock:
-            return len(self._listeners)
+            return len(self._listeners) - len(self._quarantined_motor_ids)
 
     def register(self, *, motor_id: int, sink: _TelemetrySink) -> None:
         """Register one unique motor identifier."""
@@ -90,22 +91,31 @@ class _ChannelTransport:
                     f"Motor ID {motor_id} is already registered on {self.channel!r}."
                 )
             listener = _MotorListener(motor_id=motor_id, sink=sink)
-            self._notifier.add_listener(listener)
+            try:
+                self._notifier.add_listener(listener)
+            except Exception as error:
+                raise CanConnectionError(
+                    f"Failed to register motor ID {motor_id} on {self.channel!r}."
+                ) from error
             self._listeners[motor_id] = listener
 
     def unregister(self, *, motor_id: int) -> None:
         """Remove a registered motor listener if present."""
         with self._lock:
-            listener = self._listeners.pop(motor_id, None)
+            listener = self._listeners.get(motor_id)
             if listener is not None:
                 try:
                     self._notifier.remove_listener(listener)
                 except Exception:
+                    self._quarantined_motor_ids.add(motor_id)
                     _LOGGER.exception(
                         "Failed to remove motor %d listener on %s",
                         motor_id,
                         self.channel,
                     )
+                else:
+                    del self._listeners[motor_id]
+                    self._quarantined_motor_ids.discard(motor_id)
 
     def send(self, *, arbitration_id: int, data: bytes) -> None:
         """Send one extended CAN frame."""
@@ -146,6 +156,7 @@ class _ChannelTransport:
                 _LOGGER.exception("Failed to close the CAN bus on %s", self.channel)
             finally:
                 self._listeners.clear()
+                self._quarantined_motor_ids.clear()
                 self._closed = True
 
 
@@ -172,10 +183,17 @@ class _TransportRegistry:
         """Atomically acquire a channel and register a unique motor ID."""
         with cls._lock:
             transport = cls._transports.get(channel)
+            created = transport is None
             if transport is None:
                 transport = _ChannelTransport(channel=channel)
                 cls._transports[channel] = transport
-            transport.register(motor_id=motor_id, sink=sink)
+            try:
+                transport.register(motor_id=motor_id, sink=sink)
+            except Exception:
+                if created:
+                    del cls._transports[channel]
+                    transport.close()
+                raise
             return transport
 
     @classmethod

@@ -126,6 +126,45 @@ def test_transport_cleanup_is_best_effort(
     assert "Failed to close the CAN bus" in caplog.text
 
 
+def test_failed_first_registration_rolls_back_new_transport(
+    can_harness: CanHarness,
+) -> None:
+    """Close a newly opened channel if its first listener cannot register."""
+    can_harness.fail_listener_addition = True
+    with pytest.raises(CanConnectionError, match="Failed to register"):
+        _TransportRegistry.acquire_registered(
+            channel="vcan0",
+            motor_id=1,
+            sink=TelemetrySink(),
+        )
+    assert "vcan0" not in _TransportRegistry._transports
+    assert can_harness.bus is not None
+    assert can_harness.bus.shutdown_count == 1
+
+
+def test_failed_listener_removal_quarantines_motor_id(
+    can_harness: CanHarness,
+) -> None:
+    """Prevent duplicate routing until a shared transport can be safely closed."""
+    transport = _TransportRegistry.acquire(channel="vcan0")
+    sink = TelemetrySink()
+    transport.register(motor_id=1, sink=sink)
+    transport.register(motor_id=2, sink=sink)
+    can_harness.fail_listener_removal = True
+    transport.unregister(motor_id=1)
+    assert transport.motor_count == 1
+    with pytest.raises(CanConnectionError, match="already registered"):
+        transport.register(motor_id=1, sink=sink)
+    _TransportRegistry.release(transport=transport)
+    assert can_harness.bus is not None
+    assert can_harness.bus.shutdown_count == 0
+
+    can_harness.fail_listener_removal = False
+    transport.unregister(motor_id=2)
+    _TransportRegistry.release(transport=transport)
+    assert can_harness.bus.shutdown_count == 1
+
+
 def test_listener_routes_only_exact_extended_status(can_harness: CanHarness) -> None:
     """Ignore unrelated frames and report malformed matching status frames."""
     sink = TelemetrySink()
