@@ -1,5 +1,26 @@
-from .config import MotorConfig, get_motor_config
-from .constants import ControlMode
-from .servo_can import CubeMarsServoCAN
+"""Modern typed control for CubeMars actuators using CAN Servo Mode."""
 
-__all__ = ["ControlMode", "CubeMarsServoCAN", "MotorConfig", "get_motor_config"]
+from .config import MotorConfig, ServoConfig
+from .constants import ControlMode, MotorModel, OriginMode
+from .errors import (
+    CanConnectionError,
+    ControlModeError,
+    CubeMarsServoCanError,
+    MotorConnectionError,
+    MotorFaultError,
+)
+from .servo_can import CubeMarsServoCan
+
+__all__ = [
+    "CanConnectionError",
+    "ControlMode",
+    "ControlModeError",
+    "CubeMarsServoCan",
+    "CubeMarsServoCanError",
+    "MotorConfig",
+    "MotorConnectionError",
+    "MotorFaultError",
+    "MotorModel",
+    "OriginMode",
+    "ServoConfig",
+]
