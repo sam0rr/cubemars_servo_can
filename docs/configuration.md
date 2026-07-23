@@ -30,7 +30,7 @@ Configuration is constructed explicitly through typed fields.
 | AKA60-6 |         14 |          6 |   50,000 |   0.11937 |           11.2 A |          11.2 A |                 9.0 Nm |                8.0 Nm |
 
 Hardware maxima are reference data, not default commands. An explicit override
-may lower a default cap but cannot exceed the corresponding hardware maximum.
+may replace a default cap but cannot exceed the corresponding hardware maximum.
 Commands also remain within the Servo wire limits: ±60 A q-axis current, 0–60 A
 brake current, ±100,000 ERPM in velocity mode, and ±36,000 motor-shaft degrees
 in position modes.
@@ -69,7 +69,6 @@ motor_data = MotorConfig(
     hardware_max_output_torque_newton_meters=6.0,
     default_max_current_amps=5.0,
     default_max_output_torque_newton_meters=2.5,
-    supports_persistent_origin=False,
 )
 
 config = ServoConfig(

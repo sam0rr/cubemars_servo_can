@@ -17,7 +17,7 @@ class ControlMode(StrEnum):
 
 
 class OriginMode(IntEnum):
-    """Origin operations documented by the current Servo Mode protocol."""
+    """Origin operations documented by the Servo Mode protocol."""
 
     TEMPORARY = 0
     PERSISTENT = 1

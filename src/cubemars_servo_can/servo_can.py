@@ -206,16 +206,11 @@ class CubeMarsServoCan:
             raise TypeError("mode must be a ControlMode")
         self._control_mode = mode
 
-    def set_origin(self, mode: OriginMode = OriginMode.TEMPORARY) -> None:
-        """Send an immediate temporary or persistent origin operation."""
+    def set_origin(self, mode: OriginMode) -> None:
+        """Apply an explicit temporary or persistent origin operation."""
         self._require_entered()
         if not isinstance(mode, OriginMode):
             raise TypeError("mode must be an OriginMode")
-        if (
-            mode is OriginMode.PERSISTENT
-            and not self.motor_config.supports_persistent_origin
-        ):
-            raise ValueError("this motor configuration forbids persistent origin")
         self._send_frame(
             encode_origin(motor_id=self.config.motor_id, mode=mode),
         )
@@ -269,6 +264,8 @@ class CubeMarsServoCan:
             raise ControlModeError(
                 "position commands require position or position-velocity mode"
             )
+        if isinstance(position_radians, bool):
+            raise TypeError("position must be a number")
         if not math.isfinite(position_radians):
             raise ValueError("position must be finite")
         motor_degrees = position_radians / self._output_radians_per_degree
@@ -286,6 +283,8 @@ class CubeMarsServoCan:
                 velocity_radians_per_second,
                 protocol_limit_erpm=PROFILE_VELOCITY_LIMIT_ERPM,
             )
+            if isinstance(acceleration_radians_per_second_squared, bool):
+                raise TypeError("profile acceleration must be a number")
             if (
                 not math.isfinite(acceleration_radians_per_second_squared)
                 or acceleration_radians_per_second_squared < 0.0
@@ -341,22 +340,10 @@ class CubeMarsServoCan:
         )
         self.set_q_axis_current_amps(current_amps)
 
-    def set_motor_position(
-        self,
-        position_radians: float,
-        *,
-        velocity_radians_per_second: float = 0.0,
-        acceleration_radians_per_second_squared: float = 0.0,
-    ) -> None:
-        """Stage motor-shaft position and optional motor-shaft profile."""
+    def set_motor_position(self, position_radians: float) -> None:
+        """Stage a motor-shaft position in radians."""
         self.set_output_position(
             position_radians / self.motor_config.gear_ratio,
-            velocity_radians_per_second=(
-                velocity_radians_per_second / self.motor_config.gear_ratio
-            ),
-            acceleration_radians_per_second_squared=(
-                acceleration_radians_per_second_squared / self.motor_config.gear_ratio
-            ),
         )
 
     def set_motor_velocity(self, velocity_radians_per_second: float) -> None:
@@ -379,7 +366,7 @@ class CubeMarsServoCan:
         return self._status_event.wait(self.config.connection_timeout_seconds)
 
     def update(self) -> None:
-        """Enforce safety, send the selected command, and log fresh telemetry."""
+        """Enforce safety and send the selected command using fresh telemetry."""
         self._require_entered()
         with self._lock:
             listener_error = self._listener_error
@@ -546,6 +533,8 @@ class CubeMarsServoCan:
         protocol_limit_erpm: float,
     ) -> float:
         """Convert and validate an output velocity command."""
+        if isinstance(velocity_radians_per_second, bool):
+            raise TypeError("velocity must be a number")
         erpm = velocity_radians_per_second / (self._output_radians_per_second_per_erpm)
         maximum = min(self.motor_config.max_velocity_erpm, protocol_limit_erpm)
         tolerance = 1e-6
@@ -637,6 +626,8 @@ class CubeMarsServoCan:
         unit: str,
     ) -> None:
         """Reject non-finite values and values outside inclusive limits."""
+        if isinstance(value, bool):
+            raise TypeError(f"{label} must be a number")
         if not math.isfinite(value):
             raise ValueError(f"{label} must be finite")
         if not minimum <= value <= maximum:

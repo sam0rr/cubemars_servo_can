@@ -21,16 +21,27 @@ def custom_motor() -> MotorConfig:
         hardware_max_output_torque_newton_meters=10.0,
         default_max_current_amps=10.0,
         default_max_output_torque_newton_meters=5.0,
-        supports_persistent_origin=False,
     )
 
 
 def invalid_motor(case: str) -> MotorConfig:
     """Build one deliberately invalid custom motor configuration."""
     return MotorConfig(
-        model=" " if case == "model" else "CUSTOM",
-        pole_pairs=0 if case == "pole_pairs" else 10,
-        gear_ratio=0.0 if case == "gear_ratio" else 5.0,
+        model=cast(str, 1)
+        if case == "model_type"
+        else " "
+        if case == "model"
+        else "CUSTOM",
+        pole_pairs=cast(int, True)
+        if case == "pole_pairs_type"
+        else 0
+        if case == "pole_pairs"
+        else 10,
+        gear_ratio=cast(float, True)
+        if case == "gear_ratio_type"
+        else 0.0
+        if case == "gear_ratio"
+        else 5.0,
         max_velocity_erpm=math.nan if case == "velocity" else 20_000.0,
         torque_constant_newton_meters_per_amp=0.1,
         hardware_max_current_amps=5.0 if case == "current_limit" else 20.0,
@@ -41,7 +52,6 @@ def invalid_motor(case: str) -> MotorConfig:
         default_max_output_torque_newton_meters=(
             6.0 if case == "torque_limit" else 5.0
         ),
-        supports_persistent_origin=False,
     )
 
 
@@ -83,22 +93,26 @@ def test_default_caps_and_runtime_defaults_are_conservative() -> None:
 
 
 @pytest.mark.parametrize(
-    ("case", "message"),
+    ("case", "error_type", "message"),
     [
-        ("model", "model"),
-        ("pole_pairs", "pole_pairs"),
-        ("gear_ratio", "gear_ratio"),
-        ("velocity", "max_velocity_erpm"),
-        ("current_limit", "current limit"),
-        ("torque_limit", "torque limit"),
+        ("model_type", TypeError, "model"),
+        ("model", ValueError, "model"),
+        ("pole_pairs_type", TypeError, "pole_pairs"),
+        ("pole_pairs", ValueError, "pole_pairs"),
+        ("gear_ratio_type", TypeError, "gear_ratio"),
+        ("gear_ratio", ValueError, "gear_ratio"),
+        ("velocity", ValueError, "max_velocity_erpm"),
+        ("current_limit", ValueError, "current limit"),
+        ("torque_limit", ValueError, "torque limit"),
     ],
 )
 def test_motor_config_rejects_invalid_physical_data(
     case: str,
+    error_type: type[Exception],
     message: str,
 ) -> None:
     """Reject invalid physical values and defaults beyond hardware maxima."""
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(error_type, match=message):
         invalid_motor(case)
 
 
@@ -115,8 +129,22 @@ def test_motor_config_rejects_invalid_physical_data(
         ),
         (
             lambda: ServoConfig(motor=MotorModel.AK80_9, motor_id=cast(int, True)),
+            TypeError,
+            "motor_id",
+        ),
+        (
+            lambda: ServoConfig(motor=MotorModel.AK80_9, motor_id=256),
             ValueError,
             "motor_id",
+        ),
+        (
+            lambda: ServoConfig(
+                motor=MotorModel.AK80_9,
+                motor_id=1,
+                can_channel=cast(str, 1),
+            ),
+            TypeError,
+            "can_channel",
         ),
         (
             lambda: ServoConfig(
@@ -142,8 +170,8 @@ def test_motor_config_rejects_invalid_physical_data(
                 motor_id=1,
                 overtemperature_trip_count=cast(int, 1.5),
             ),
-            ValueError,
-            "positive integer",
+            TypeError,
+            "integer",
         ),
         (
             lambda: ServoConfig(
@@ -151,8 +179,8 @@ def test_motor_config_rejects_invalid_physical_data(
                 motor_id=1,
                 overtemperature_trip_count=cast(int, math.nan),
             ),
-            ValueError,
-            "positive integer",
+            TypeError,
+            "integer",
         ),
         (
             lambda: ServoConfig(
@@ -160,8 +188,17 @@ def test_motor_config_rejects_invalid_physical_data(
                 motor_id=1,
                 overtemperature_trip_count=True,
             ),
-            ValueError,
-            "positive integer",
+            TypeError,
+            "integer",
+        ),
+        (
+            lambda: ServoConfig(
+                motor=MotorModel.AK80_9,
+                motor_id=1,
+                max_driver_temperature_celsius=cast(float, True),
+            ),
+            TypeError,
+            "max_driver_temperature_celsius",
         ),
         (
             lambda: ServoConfig(
@@ -198,6 +235,15 @@ def test_motor_config_rejects_invalid_physical_data(
             ),
             ValueError,
             "telemetry_timeout_seconds",
+        ),
+        (
+            lambda: ServoConfig(
+                motor=MotorModel.AK80_9,
+                motor_id=1,
+                max_current_amps=cast(float, True),
+            ),
+            TypeError,
+            "max_current_amps",
         ),
         (
             lambda: ServoConfig(

@@ -29,7 +29,7 @@ For motor wiring and initial configuration (setting the servo mode and CAN ID) p
 
 Keep hardware bring-up details in one place:
 
-- Full Raspberry/Waveshare setup and single recommended runtime flow (boot-time interface bring-up for `can0`, `can1`, etc.): [Usage Guide](docs/usage.md#before-starting)
+- Full Raspberry/Waveshare setup and single recommended runtime flow (boot-time interface bring-up for `can0`, `can1`, etc.): [Usage Guide](docs/usage.md#basic-initialization)
 
 ---
 

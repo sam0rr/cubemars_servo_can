@@ -45,22 +45,6 @@ def enter_servo(servo: CubeMarsServoCan) -> CubeMarsServoCan:
     return servo.__enter__()
 
 
-def restricted_motor() -> MotorConfig:
-    """Return explicit custom data that forbids persistent origin changes."""
-    return MotorConfig(
-        model="CUSTOM",
-        pole_pairs=21,
-        gear_ratio=9.0,
-        max_velocity_erpm=32_000.0,
-        torque_constant_newton_meters_per_amp=0.095,
-        hardware_max_current_amps=28.0,
-        hardware_max_output_torque_newton_meters=22.0,
-        default_max_current_amps=15.0,
-        default_max_output_torque_newton_meters=12.5,
-        supports_persistent_origin=False,
-    )
-
-
 def high_limit_motor() -> MotorConfig:
     """Return custom data whose hardware ranges exceed Servo protocol limits."""
     return MotorConfig(
@@ -175,7 +159,7 @@ def test_operations_requiring_context_are_rejected() -> None:
     with pytest.raises(RuntimeError, match="has not been entered"):
         servo._send_frame(CanFrame(arbitration_id=0x101, data=b""))
     with pytest.raises(RuntimeError, match="enter the servo context"):
-        servo.set_origin()
+        servo.set_origin(OriginMode.PERSISTENT)
 
 
 def test_close_logs_secondary_send_failures(
@@ -191,12 +175,12 @@ def test_close_logs_secondary_send_failures(
     assert "Failed to send zero-current" in caplog.text
 
 
-def test_set_origin_is_immediate_typed_and_capability_checked(
+def test_set_origin_is_immediate_typed_and_explicit(
     can_harness: CanHarness,
 ) -> None:
-    """Send only current-manual origin modes and enforce motor capability."""
+    """Expose only the two manual-backed modes without an implicit default."""
     servo = enter_servo(make_servo())
-    servo.set_origin()
+    servo.set_origin(OriginMode.TEMPORARY)
     servo.set_origin(OriginMode.PERSISTENT)
     assert [message.arbitration_id for message in can_harness.sent[-2:]] == [
         0x501,
@@ -208,20 +192,6 @@ def test_set_origin_is_immediate_typed_and_capability_checked(
     ]
     with pytest.raises(TypeError, match="OriginMode"):
         servo.set_origin(cast(OriginMode, 1))
-    servo.close()
-
-    restricted = enter_servo(
-        make_servo(
-            ServoConfig(
-                motor=restricted_motor(),
-                motor_id=1,
-                can_channel="vcan0",
-                connection_timeout_seconds=0.001,
-            )
-        )
-    )
-    with pytest.raises(ValueError, match="forbids"):
-        restricted.set_origin(OriginMode.PERSISTENT)
 
 
 @pytest.mark.parametrize(
@@ -282,6 +252,8 @@ def test_control_mode_duty_and_current_validation() -> None:
     servo.set_control_mode(ControlMode.DUTY_CYCLE)
     with pytest.raises(ValueError, match="outside"):
         servo.set_duty_cycle(1.1)
+    with pytest.raises(TypeError, match="number"):
+        servo.set_duty_cycle(True)
 
     with pytest.raises(ControlModeError, match="current commands"):
         servo.set_q_axis_current_amps(0.0)
@@ -344,6 +316,8 @@ def test_position_commands_validate_modes_profiles_and_protocol_ranges() -> None
     servo.set_control_mode(ControlMode.POSITION)
     with pytest.raises(ValueError, match="finite"):
         servo.set_output_position(math.nan)
+    with pytest.raises(TypeError, match="number"):
+        servo.set_output_position(True)
     output_radians_per_motor_degree = math.pi / (180.0 * 9.0)
     servo.set_output_position(36_000.0 * output_radians_per_motor_degree)
     previous_position = servo._command.motor_position_degrees
@@ -360,6 +334,8 @@ def test_position_commands_validate_modes_profiles_and_protocol_ranges() -> None
         servo.set_output_position(-36_000.1 * output_radians_per_motor_degree)
     with pytest.raises(ValueError, match="Velocity"):
         servo.set_output_position(0.0, velocity_radians_per_second=100.0)
+    with pytest.raises(TypeError, match="number"):
+        servo.set_output_position(0.0, velocity_radians_per_second=True)
     with pytest.raises(ValueError, match="acceleration"):
         servo.set_output_position(
             0.0,
@@ -369,6 +345,11 @@ def test_position_commands_validate_modes_profiles_and_protocol_ranges() -> None
         servo.set_output_position(
             0.0,
             acceleration_radians_per_second_squared=math.nan,
+        )
+    with pytest.raises(TypeError, match="acceleration"):
+        servo.set_output_position(
+            0.0,
+            acceleration_radians_per_second_squared=True,
         )
     with pytest.raises(ValueError, match="int16"):
         servo.set_output_position(
@@ -388,6 +369,8 @@ def test_velocity_torque_and_motor_side_wrappers() -> None:
         servo.set_output_velocity(100.0)
     with pytest.raises(ValueError, match="finite"):
         servo.set_output_velocity(math.nan)
+    with pytest.raises(TypeError, match="number"):
+        servo.set_output_velocity(True)
     servo.set_motor_velocity(1.0)
     assert servo._command.velocity_erpm > 0.0
 
@@ -403,12 +386,6 @@ def test_velocity_torque_and_motor_side_wrappers() -> None:
     servo.set_control_mode(ControlMode.POSITION)
     servo.set_motor_position(9.0)
     assert servo._command.motor_position_degrees == pytest.approx(9.0 * 180.0 / math.pi)
-    servo.set_control_mode(ControlMode.POSITION_VELOCITY)
-    servo.set_motor_position(
-        0.1,
-        velocity_radians_per_second=0.2,
-        acceleration_radians_per_second_squared=0.3,
-    )
 
 
 def test_velocity_accepts_exact_boundary_after_roundoff() -> None:

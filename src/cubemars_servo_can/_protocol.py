@@ -22,8 +22,14 @@ class CanFrame:
 
     def __post_init__(self) -> None:
         """Validate Classic CAN and 29-bit identifier constraints."""
+        if not isinstance(self.arbitration_id, int) or isinstance(
+            self.arbitration_id, bool
+        ):
+            raise TypeError("arbitration_id must be an integer")
         if not 0 <= self.arbitration_id <= 0x1FFFFFFF:
             raise ValueError("arbitration_id must fit a 29-bit extended CAN ID")
+        if not isinstance(self.data, bytes):
+            raise TypeError("data must be bytes")
         if len(self.data) > 8:
             raise ValueError("Classic CAN payloads cannot exceed 8 bytes")
 
@@ -61,6 +67,8 @@ def encode_current(*, motor_id: int, current_amps: float) -> CanFrame:
 
 def encode_current_brake(*, motor_id: int, current_amps: float) -> CanFrame:
     """Encode a non-negative current-brake command."""
+    if isinstance(current_amps, bool):
+        raise TypeError("brake current must be a number")
     if not math.isfinite(current_amps):
         raise ValueError("brake current must be finite")
     if current_amps < 0.0:
@@ -103,7 +111,7 @@ def encode_position(*, motor_id: int, motor_position_degrees: float) -> CanFrame
 
 
 def encode_origin(*, motor_id: int, mode: OriginMode) -> CanFrame:
-    """Encode a temporary or persistent origin command."""
+    """Encode an explicit temporary or persistent origin operation."""
     return CanFrame(
         arbitration_id=arbitration_id(
             motor_id=motor_id,
@@ -178,6 +186,8 @@ def scaled_int32_frame(
 
 def scaled_integer(value: float, scale: float, *, bits: int) -> int:
     """Scale and range-check a finite signed integer."""
+    if isinstance(value, bool):
+        raise TypeError("protocol values must be numbers")
     if not math.isfinite(value):
         raise ValueError("protocol values must be finite")
     encoded = int(value * scale)
@@ -190,6 +200,8 @@ def scaled_integer(value: float, scale: float, *, bits: int) -> int:
 
 def validate_position(motor_position_degrees: float) -> None:
     """Keep motor-position commands within the Servo protocol range."""
+    if isinstance(motor_position_degrees, bool):
+        raise TypeError("motor position must be a number")
     if (
         not math.isfinite(motor_position_degrees)
         or abs(motor_position_degrees) > MOTOR_POSITION_LIMIT_DEGREES
@@ -205,6 +217,8 @@ def validate_signed_limit(
     unit: str,
 ) -> None:
     """Validate a finite value against a symmetric protocol limit."""
+    if isinstance(value, bool):
+        raise TypeError(f"{label} must be a number")
     if not math.isfinite(value):
         raise ValueError(f"{label} must be finite")
     if not -maximum <= value <= maximum:
@@ -213,9 +227,7 @@ def validate_signed_limit(
 
 def validate_motor_id(motor_id: int) -> None:
     """Validate the one-byte controller identifier used by Servo Mode."""
-    if (
-        not isinstance(motor_id, int)
-        or isinstance(motor_id, bool)
-        or not 0 <= motor_id <= 0xFF
-    ):
+    if not isinstance(motor_id, int) or isinstance(motor_id, bool):
+        raise TypeError("motor_id must be an integer")
+    if not 0 <= motor_id <= 0xFF:
         raise ValueError("motor_id must be an integer between 0 and 255")

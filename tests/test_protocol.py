@@ -96,6 +96,8 @@ def test_protocol_rejects_malformed_and_out_of_range_values() -> None:
     """Reject malformed, non-finite, negative, and overflowing inputs."""
     with pytest.raises(ValueError, match="8 bytes"):
         _protocol.decode_status(data=b"short", received_at_seconds=0.0)
+    with pytest.raises(TypeError, match="number"):
+        _protocol.encode_current_brake(motor_id=1, current_amps=True)
     with pytest.raises(ValueError, match="negative"):
         _protocol.encode_current_brake(motor_id=1, current_amps=-0.1)
     with pytest.raises(ValueError, match="finite"):
@@ -104,12 +106,18 @@ def test_protocol_rejects_malformed_and_out_of_range_values() -> None:
         _protocol.encode_current_brake(motor_id=1, current_amps=60.1)
     with pytest.raises(ValueError, match="60"):
         _protocol.encode_current(motor_id=1, current_amps=-60.1)
+    with pytest.raises(TypeError, match="number"):
+        _protocol.encode_current(motor_id=1, current_amps=True)
     with pytest.raises(ValueError, match="finite"):
         _protocol.encode_current(motor_id=1, current_amps=math.inf)
     with pytest.raises(ValueError, match="100000"):
         _protocol.encode_velocity(motor_id=1, velocity_erpm=100_000.1)
     with pytest.raises(ValueError, match="finite"):
         _protocol.encode_duty_cycle(motor_id=1, duty_cycle=math.inf)
+    with pytest.raises(TypeError, match="number"):
+        _protocol.encode_duty_cycle(motor_id=1, duty_cycle=True)
+    with pytest.raises(TypeError, match="number"):
+        _protocol.encode_position(motor_id=1, motor_position_degrees=True)
     with pytest.raises(ValueError, match="36,000"):
         _protocol.encode_position(
             motor_id=1,
@@ -138,16 +146,30 @@ def test_protocol_rejects_malformed_and_out_of_range_values() -> None:
         )
 
 
-@pytest.mark.parametrize("motor_id", [-1, 256, cast(int, True)])
-def test_protocol_rejects_invalid_motor_ids(motor_id: int) -> None:
+@pytest.mark.parametrize(
+    ("motor_id", "error_type"),
+    [
+        (-1, ValueError),
+        (256, ValueError),
+        (cast(int, True), TypeError),
+    ],
+)
+def test_protocol_rejects_invalid_motor_ids(
+    motor_id: int,
+    error_type: type[Exception],
+) -> None:
     """Keep motor identifiers within the one-byte protocol field."""
-    with pytest.raises(ValueError, match="between 0 and 255"):
+    with pytest.raises(error_type, match="motor_id"):
         _protocol.encode_current(motor_id=motor_id, current_amps=0.0)
 
 
 def test_can_frame_validates_extended_identifier_and_payload_width() -> None:
     """Reject frames that cannot be sent as extended Classic CAN."""
+    with pytest.raises(TypeError, match="arbitration_id"):
+        _protocol.CanFrame(arbitration_id=cast(int, True), data=b"")
     with pytest.raises(ValueError, match="29-bit"):
         _protocol.CanFrame(arbitration_id=0x20000000, data=b"")
+    with pytest.raises(TypeError, match="data"):
+        _protocol.CanFrame(arbitration_id=1, data=cast(bytes, ""))
     with pytest.raises(ValueError, match="8 bytes"):
         _protocol.CanFrame(arbitration_id=1, data=b"123456789")

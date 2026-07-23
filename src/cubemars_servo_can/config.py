@@ -19,12 +19,15 @@ class MotorConfig:
     hardware_max_output_torque_newton_meters: float
     default_max_current_amps: float
     default_max_output_torque_newton_meters: float
-    supports_persistent_origin: bool = True
 
     def __post_init__(self) -> None:
         """Reject incomplete or internally inconsistent motor data."""
+        if not isinstance(self.model, str):
+            raise TypeError("model must be a string")
         if not self.model.strip():
             raise ValueError("model must not be empty")
+        if not isinstance(self.pole_pairs, int) or isinstance(self.pole_pairs, bool):
+            raise TypeError("pole_pairs must be an integer")
         if self.pole_pairs <= 0:
             raise ValueError("pole_pairs must be positive")
         positive_values = (
@@ -46,6 +49,8 @@ class MotorConfig:
             ),
         )
         for value, name in positive_values:
+            if isinstance(value, bool):
+                raise TypeError(f"{name} must be a number")
             if not math.isfinite(value) or value <= 0.0:
                 raise ValueError(f"{name} must be finite and positive")
         if self.default_max_current_amps > self.hardware_max_current_amps:
@@ -113,23 +118,23 @@ class ServoConfig:
         """Validate motor selection and bus addressing."""
         if not isinstance(self.motor, (MotorModel, MotorConfig)):
             raise TypeError("motor must be a MotorModel or MotorConfig")
-        if (
-            not isinstance(self.motor_id, int)
-            or isinstance(self.motor_id, bool)
-            or not 0 <= self.motor_id <= 0xFF
-        ):
+        if not isinstance(self.motor_id, int) or isinstance(self.motor_id, bool):
+            raise TypeError("motor_id must be an integer")
+        if not 0 <= self.motor_id <= 0xFF:
             raise ValueError("motor_id must be an integer between 0 and 255")
+        if not isinstance(self.can_channel, str):
+            raise TypeError("can_channel must be a string")
         if not self.can_channel.strip():
             raise ValueError("can_channel must not be empty")
 
     def _validate_runtime_values(self) -> None:
         """Validate thermal and timing settings."""
-        if (
-            not isinstance(self.overtemperature_trip_count, int)
-            or isinstance(self.overtemperature_trip_count, bool)
-            or self.overtemperature_trip_count < 1
+        if not isinstance(self.overtemperature_trip_count, int) or isinstance(
+            self.overtemperature_trip_count, bool
         ):
-            raise ValueError("overtemperature_trip_count must be a positive integer")
+            raise TypeError("overtemperature_trip_count must be an integer")
+        if self.overtemperature_trip_count < 1:
+            raise ValueError("overtemperature_trip_count must be positive")
         finite_values = (
             (
                 self.max_driver_temperature_celsius,
@@ -140,6 +145,8 @@ class ServoConfig:
             (self.telemetry_timeout_seconds, "telemetry_timeout_seconds"),
         )
         for value, name in finite_values:
+            if isinstance(value, bool):
+                raise TypeError(f"{name} must be a number")
             if not math.isfinite(value):
                 raise ValueError(f"{name} must be finite")
         if self.cooldown_margin_celsius < 0.0:
@@ -156,6 +163,8 @@ class ServoConfig:
         """Validate an optional positive safety limit against hardware data."""
         if value is None:
             return
+        if isinstance(value, bool):
+            raise TypeError(f"{name} must be a number")
         if not math.isfinite(value) or value <= 0.0:
             raise ValueError(f"{name} must be finite and positive")
         if value > hardware_maximum:
