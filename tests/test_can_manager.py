@@ -219,6 +219,19 @@ def test_listener_routes_only_explicit_extended_feedback(
     )
     assert len(sink.telemetry) == 3
     assert len(sink.errors) == 1
+    for command in (
+        bytes.fromhex("FF FF FF FF FF FF FF FC"),
+        bytes.fromhex("FF FF FF FF FF FF FF FD"),
+    ):
+        listener.on_message_received(
+            can.Message(
+                arbitration_id=0x0001,
+                data=command,
+                is_extended_id=True,
+            )
+        )
+    assert len(sink.telemetry) == 3
+    assert len(sink.errors) == 1
     listener.deactivate()
     listener.on_message_received(
         can.Message(

@@ -8,7 +8,8 @@ The library accepts the real-time status function ID `0x29`, startup-state
 function ID `0x09`, and exact motor-ID feedback emitted by supported controller
 firmware. Feedback must use an extended frame and exactly eight payload bytes.
 Short exact-ID frames are ignored because they can be local duty-command
-loopback.
+loopback. Known eight-byte exact-ID command payloads are also rejected before
+status decoding.
 
 ---
 

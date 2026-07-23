@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from typing import ClassVar, Protocol
+from typing import ClassVar, Final, Protocol
 
 import can
 
@@ -16,6 +16,12 @@ from ._protocol import (
 from .errors import CanConnectionError
 
 _LOGGER = logging.getLogger(__name__)
+EXACT_ID_COMMAND_PAYLOADS: Final = frozenset(
+    (
+        bytes.fromhex("FF FF FF FF FF FF FF FC"),
+        bytes.fromhex("FF FF FF FF FF FF FF FD"),
+    )
+)
 
 
 class TelemetrySink(Protocol):
@@ -48,7 +54,9 @@ class MotorListener(can.Listener):
         if msg.arbitration_id not in self._status_ids or not msg.is_extended_id:
             return
         data = bytes(msg.data)
-        if msg.arbitration_id == self._motor_id and len(data) != 8:
+        if msg.arbitration_id == self._motor_id and (
+            len(data) != 8 or data in EXACT_ID_COMMAND_PAYLOADS
+        ):
             return
         with self._dispatch_lock:
             sink = self._sink
