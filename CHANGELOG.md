@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.0.0 - 2026-07-23
+
+### Breaking changes
+
+- Replaced the legacy multi-argument `CubeMarsServoCAN` API with
+  `CubeMarsServoCan(ServoConfig(...))`.
+- Removed legacy aliases, dictionary overrides, compatibility helpers, MIT
+  Mode lifecycle frames, and public low-level CAN APIs.
+- Replaced implicit control-entry methods with `ControlMode` and explicit
+  SI-unit command names.
+
+### Added
+
+- Added immutable `MotorConfig` and `ServoConfig` dataclasses.
+- Added typed model, mode, origin, and exception APIs.
+- Added exact pure Servo Mode codecs and channel-scoped shared CAN managers.
+- Added fresh-telemetry, fault, thermal, current, torque, and velocity safety
+  enforcement.
+- Added exact protocol vectors, virtual-CAN integration, lifecycle tests, and
+  100% source coverage.
+
+### Corrected
+
+- Corrected status routing to the documented `0x29` function ID.
+- Corrected signed temperature decoding and fault descriptions `6` and `7`.
+- Corrected position conversion to include degrees, pole pairs, and gear ratio.
+- Corrected position/velocity speed and acceleration packing to documented
+  units divided by ten.
+- Standardized Servo Mode shutdown on zero q-axis current.
+
+### Validation
+
+- Software-only test suite: `76 passed`.
+- Source coverage: `100%` (`640/640` statements).
+- Ruff, mypy strict, and Vulture: clean.
+
 ## 0.4.0 - 2026-04-02
 
 ### Added
