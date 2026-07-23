@@ -144,8 +144,6 @@ def encode_position_velocity(
         0.1,
         bits=16,
     )
-    if acceleration < 0:
-        raise ValueError("profile acceleration must not be negative")
     return CanFrame(
         arbitration_id=arbitration_id(
             motor_id=motor_id,

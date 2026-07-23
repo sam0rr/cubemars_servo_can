@@ -59,6 +59,16 @@ from cubemars_servo_can.constants import _PacketId
             0x607,
             struct.pack(">ihh", 15_000, 123, 456),
         ),
+        (
+            _protocol.encode_position_velocity(
+                motor_id=0x68,
+                motor_position_degrees=-1_000.0,
+                velocity_erpm=-10_000.0,
+                acceleration_erpm_per_second=-10_000.0,
+            ),
+            0x668,
+            bytes.fromhex("FF 67 69 80 FC 18 FC 18"),
+        ),
     ],
 )
 def test_command_frames_match_vendor_golden_vectors(
@@ -138,13 +148,6 @@ def test_protocol_rejects_malformed_and_out_of_range_values() -> None:
             motor_position_degrees=0.0,
             velocity_erpm=400_000.0,
             acceleration_erpm_per_second=0.0,
-        )
-    with pytest.raises(ValueError, match="negative"):
-        _protocol.encode_position_velocity(
-            motor_id=1,
-            motor_position_degrees=0.0,
-            velocity_erpm=0.0,
-            acceleration_erpm_per_second=-10.0,
         )
 
 

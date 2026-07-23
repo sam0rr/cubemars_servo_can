@@ -1,5 +1,6 @@
 """Tests for channel-scoped CAN ownership and exact status routing."""
 
+import threading
 from dataclasses import dataclass, field
 
 import can
@@ -227,3 +228,53 @@ def test_listener_routes_only_explicit_extended_feedback(
         )
     )
     assert len(sink.telemetry) == 3
+
+
+def test_listener_deactivation_waits_for_in_flight_dispatch(
+    can_harness: CanHarness,
+) -> None:
+    """Return from deactivation only after a cached sink dispatch finishes."""
+    callback_started = threading.Event()
+    release_callback = threading.Event()
+    deactivation_started = threading.Event()
+    deactivation_finished = threading.Event()
+
+    class BlockingSink(TelemetrySink):
+        def _accept_telemetry(self, telemetry: ServoTelemetry) -> None:
+            callback_started.set()
+            assert release_callback.wait(timeout=1.0)
+            super()._accept_telemetry(telemetry)
+
+    sink = BlockingSink()
+    listener = MotorListener(motor_id=1, sink=sink)
+    message = can.Message(
+        arbitration_id=0x2901,
+        data=can_harness.status_payload,
+        is_extended_id=True,
+    )
+    dispatch_thread = threading.Thread(
+        target=listener.on_message_received,
+        args=(message,),
+    )
+
+    def deactivate() -> None:
+        deactivation_started.set()
+        listener.deactivate()
+        deactivation_finished.set()
+
+    dispatch_thread.start()
+    assert callback_started.wait(timeout=1.0)
+    deactivation_thread = threading.Thread(target=deactivate)
+    deactivation_thread.start()
+    assert deactivation_started.wait(timeout=1.0)
+    assert not deactivation_finished.wait(timeout=0.01)
+    release_callback.set()
+    dispatch_thread.join(timeout=1.0)
+    deactivation_thread.join(timeout=1.0)
+    assert not dispatch_thread.is_alive()
+    assert not deactivation_thread.is_alive()
+    assert deactivation_finished.is_set()
+    assert len(sink.telemetry) == 1
+    listener.on_message_received(message)
+    assert len(sink.telemetry) == 1
+    assert not sink.errors

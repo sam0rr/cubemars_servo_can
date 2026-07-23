@@ -336,11 +336,12 @@ def test_position_commands_validate_modes_profiles_and_protocol_ranges() -> None
         servo.set_output_position(0.0, velocity_radians_per_second=100.0)
     with pytest.raises(TypeError, match="number"):
         servo.set_output_position(0.0, velocity_radians_per_second=True)
-    with pytest.raises(ValueError, match="acceleration"):
-        servo.set_output_position(
-            0.0,
-            acceleration_radians_per_second_squared=-1.0,
-        )
+    servo.set_output_position(
+        0.0,
+        acceleration_radians_per_second_squared=-1.0,
+    )
+    assert servo._command.acceleration_erpm_per_second < 0.0
+    previous_position = servo._command.motor_position_degrees
     with pytest.raises(ValueError, match="acceleration"):
         servo.set_output_position(
             0.0,
@@ -520,12 +521,20 @@ def test_update_rejects_stale_telemetry_after_safe_stop(
 def test_listener_errors_surface_on_control_thread_after_safe_stop(
     can_harness: CanHarness,
 ) -> None:
-    """Keep notifier callbacks alive and surface decode failures in update."""
+    """Surface decode failures without discarding a pending driver fault."""
     servo = enter_servo(make_servo())
+    servo._accept_telemetry(
+        ServoTelemetry(
+            fault_code=7,
+            received_at_seconds=time.monotonic(),
+        )
+    )
     servo._accept_listener_error(ValueError("bad frame"))
     with pytest.raises(MotorConnectionError, match="decode"):
         servo.update()
     assert can_harness.sent[-1].arbitration_id == 0x101
+    with pytest.raises(MotorFaultError, match="stall"):
+        servo.update()
     servo.update()
 
 

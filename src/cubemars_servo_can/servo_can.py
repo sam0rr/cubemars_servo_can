@@ -285,11 +285,8 @@ class CubeMarsServoCan:
             )
             if isinstance(acceleration_radians_per_second_squared, bool):
                 raise TypeError("profile acceleration must be a number")
-            if (
-                not math.isfinite(acceleration_radians_per_second_squared)
-                or acceleration_radians_per_second_squared < 0.0
-            ):
-                raise ValueError("profile acceleration must be finite and non-negative")
+            if not math.isfinite(acceleration_radians_per_second_squared):
+                raise ValueError("profile acceleration must be finite")
             acceleration_erpm_per_second = (
                 acceleration_radians_per_second_squared
                 / self._output_radians_per_second_per_erpm
@@ -401,13 +398,12 @@ class CubeMarsServoCan:
             listener_error = self._listener_error
             self._listener_error = None
             telemetry = self._telemetry
-            fault_code = self._pending_fault_code
-            self._pending_fault_code = None
         if listener_error is not None:
             self._try_send_zero_current()
             raise MotorConnectionError("failed to decode Servo telemetry") from (
                 listener_error
             )
+        fault_code = self._consume_pending_fault()
         if fault_code is not None:
             self._try_send_zero_current()
             raise self._motor_fault(fault_code)

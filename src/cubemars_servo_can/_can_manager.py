@@ -35,33 +35,34 @@ class MotorListener(can.Listener):
         """Store immutable routing data."""
         self._motor_id = motor_id
         self._status_ids = status_arbitration_ids(motor_id=motor_id)
+        self._dispatch_lock = threading.Lock()
         self._sink: TelemetrySink | None = sink
 
     def deactivate(self) -> None:
         """Stop dispatch even if notifier removal later fails."""
-        self._sink = None
+        with self._dispatch_lock:
+            self._sink = None
 
     def on_message_received(self, msg: can.Message) -> None:
         """Decode a matching status frame and ignore all other traffic."""
-        sink = self._sink
-        if (
-            sink is None
-            or msg.arbitration_id not in self._status_ids
-            or not msg.is_extended_id
-        ):
+        if msg.arbitration_id not in self._status_ids or not msg.is_extended_id:
             return
         data = bytes(msg.data)
         if msg.arbitration_id == self._motor_id and len(data) != 8:
             return
-        try:
-            telemetry = decode_status(
-                data=data,
-                received_at_seconds=time.monotonic(),
-            )
-        except (TypeError, ValueError) as error:
-            sink._accept_listener_error(error)
-            return
-        sink._accept_telemetry(telemetry)
+        with self._dispatch_lock:
+            sink = self._sink
+            if sink is None:
+                return
+            try:
+                telemetry = decode_status(
+                    data=data,
+                    received_at_seconds=time.monotonic(),
+                )
+            except (TypeError, ValueError) as error:
+                sink._accept_listener_error(error)
+                return
+            sink._accept_telemetry(telemetry)
 
 
 class CanManager:
