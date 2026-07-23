@@ -7,6 +7,8 @@ CubeMars Servo CAN uses extended arbitration IDs:
 The library accepts status only at function ID `0x29`, with an extended frame
 and exactly eight payload bytes.
 
+---
+
 ## Commands
 
 | Function          |     ID | Payload                                                      |
@@ -27,6 +29,8 @@ Motor-shaft position commands are limited to ±36,000 degrees. Q-axis current is
 limited to ±60 A, current brake to 0–60 A, and velocity-loop commands to
 ±100,000 ERPM.
 
+---
+
 ## Status
 
 The `0x29` payload layout is:
@@ -41,6 +45,8 @@ The `0x29` payload layout is:
 
 Fault descriptions include MOSFET over-temperature (`6`) and motor stall
 (`7`) according to the current driver manual.
+
+---
 
 ## SI conversions
 
@@ -57,3 +63,5 @@ Torque is an ideal estimate:
 Protocol internals live in `_protocol.py` and are intentionally private. The
 supported interface uses the SI-unit methods and properties on
 `CubeMarsServoCan`.
+
+---

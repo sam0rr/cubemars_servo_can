@@ -18,6 +18,8 @@ config = ServoConfig(
 
 Configuration is constructed explicitly through typed fields.
 
+---
+
 ## Built-in motor data
 
 | Model   | Pole pairs | Gear ratio | Max ERPM | Kt (Nm/A) | Hardware current | Default current | Hardware output torque | Default output torque |
@@ -33,6 +35,8 @@ Commands also remain within the Servo wire limits: ±60 A q-axis current, 0–60
 brake current, ±100,000 ERPM in velocity mode, and ±36,000 motor-shaft degrees
 in position modes.
 
+---
+
 ## Runtime fields
 
 | Field                             | Default       | Meaning                              |
@@ -45,6 +49,8 @@ in position modes.
 | `cooldown_margin_celsius`         | `2.0`         | Hysteresis before the guard clears   |
 | `connection_timeout_seconds`      | `1.5`         | Context-entry fresh-status timeout   |
 | `telemetry_timeout_seconds`       | `0.1`         | Maximum telemetry age during update  |
+
+---
 
 ## Custom motor
 
@@ -74,3 +80,5 @@ config = ServoConfig(
 
 All physical values and limits must be finite and positive. Conservative
 defaults must not exceed the declared hardware maxima.
+
+---

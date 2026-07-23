@@ -1,5 +1,7 @@
 # Usage
 
+---
+
 ## Before starting
 
 Configure the actuator for Servo Mode, assign its CAN ID, and enable periodic
@@ -30,6 +32,8 @@ Confirm the interface before running the application:
 ip -details link show can0
 ```
 
+---
+
 ## Lifecycle
 
 `CubeMarsServoCan` is side-effect-free when constructed. Context entry acquires
@@ -52,6 +56,8 @@ with CubeMarsServoCan(config) as motor:
 
 Use a regular update loop. Command setters stage values; `update()` checks
 fresh telemetry and safety state before transmitting.
+
+---
 
 ## Control modes
 
@@ -136,6 +142,8 @@ motor.update()
 
 `ControlMode.IDLE` sends zero q-axis current on each update.
 
+---
+
 ## Origin
 
 Origin operations are immediate and require an entered context:
@@ -147,6 +155,8 @@ motor.set_origin(OriginMode.PERSISTENT)
 
 Only temporary (`0`) and persistent (`1`) operations from the current manual
 are supported.
+
+---
 
 ## Telemetry
 
@@ -166,6 +176,8 @@ torque_estimate = motor.output_torque_newton_meters
 Motor-shaft position, velocity, acceleration, and torque estimates are also
 available through properties prefixed with `motor_`.
 
+---
+
 ## Safety behavior
 
 - Stale or malformed telemetry attempts zero current, then raises
@@ -180,3 +192,5 @@ available through properties prefixed with `motor_`.
 
 These are software safeguards, not a replacement for hardware limits,
 mechanical protection, an emergency stop, or commissioning tests.
+
+---
