@@ -371,6 +371,8 @@ def test_velocity_torque_and_motor_side_wrappers() -> None:
         servo.set_output_velocity(math.nan)
     with pytest.raises(TypeError, match="number"):
         servo.set_output_velocity(True)
+    with pytest.raises(TypeError, match="motor velocity"):
+        servo.set_motor_velocity(True)
     servo.set_motor_velocity(1.0)
     assert servo._command.velocity_erpm > 0.0
 
@@ -382,11 +384,22 @@ def test_velocity_torque_and_motor_side_wrappers() -> None:
     assert servo._command.q_axis_current_amps == pytest.approx(expected_current)
     servo.set_motor_torque(1.0)
     assert servo._command.q_axis_current_amps == pytest.approx(1.0 / 0.095)
+    with pytest.raises(TypeError, match="motor torque"):
+        servo.set_motor_torque(True)
 
     servo.set_control_mode(ControlMode.POSITION)
+    with pytest.raises(TypeError, match="motor position"):
+        servo.set_motor_position(True)
     servo.set_motor_position(9.0)
     assert servo._command.motor_position_degrees == pytest.approx(9.0 * 180.0 / math.pi)
     servo.set_control_mode(ControlMode.POSITION_VELOCITY)
+    with pytest.raises(TypeError, match="motor velocity"):
+        servo.set_motor_position(0.1, velocity_radians_per_second=True)
+    with pytest.raises(TypeError, match="motor acceleration"):
+        servo.set_motor_position(
+            0.1,
+            acceleration_radians_per_second_squared=True,
+        )
     servo.set_motor_position(
         0.1,
         velocity_radians_per_second=0.2,

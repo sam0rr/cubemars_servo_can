@@ -348,6 +348,15 @@ class CubeMarsServoCan:
         acceleration_radians_per_second_squared: float = 0.0,
     ) -> None:
         """Stage motor-shaft position and optional motor-shaft profile."""
+        self._reject_boolean(value=position_radians, label="motor position")
+        self._reject_boolean(
+            value=velocity_radians_per_second,
+            label="motor velocity",
+        )
+        self._reject_boolean(
+            value=acceleration_radians_per_second_squared,
+            label="motor acceleration",
+        )
         self.set_output_position(
             position_radians / self.motor_config.gear_ratio,
             velocity_radians_per_second=(
@@ -360,12 +369,20 @@ class CubeMarsServoCan:
 
     def set_motor_velocity(self, velocity_radians_per_second: float) -> None:
         """Stage motor-shaft velocity in radians per second."""
+        self._reject_boolean(
+            value=velocity_radians_per_second,
+            label="motor velocity",
+        )
         self.set_output_velocity(
             velocity_radians_per_second / self.motor_config.gear_ratio
         )
 
     def set_motor_torque(self, torque_newton_meters: float) -> None:
         """Stage ideal motor-shaft torque in newton-metres."""
+        self._reject_boolean(
+            value=torque_newton_meters,
+            label="motor torque",
+        )
         self.set_output_torque(torque_newton_meters * self.motor_config.gear_ratio)
 
     def check_connection(self) -> bool:
@@ -627,6 +644,12 @@ class CubeMarsServoCan:
         """Reject a command incompatible with the active mode."""
         if self._control_mode is not expected:
             raise ControlModeError(f"command requires {expected.value} mode")
+
+    @staticmethod
+    def _reject_boolean(*, value: float, label: str) -> None:
+        """Reject booleans before unit conversion turns them into numbers."""
+        if isinstance(value, bool):
+            raise TypeError(f"{label} must be a number")
 
     @staticmethod
     def _check_range(
