@@ -1,93 +1,128 @@
 # CubeMars Servo CAN
 
-A small, typed Python 3.13 library for controlling CubeMars AK and AKA
-actuators over SocketCAN in Servo Mode.
+A simplified, robust, and modern Python library for controlling CubeMars AK-series and AKA-series actuators (for example `AK40-10` and `AKA60-6`) via CAN bus in Servo Mode.
 
-Version 1.0 exposes one configuration object, one controller, and explicit
-SI-unit names.
+---
 
-## Features
+## Key Features
 
-- Exact Servo Mode command/status codecs based on the current CubeMars manual.
-- Built-in data for `AK10-9`, `AK40-10`, `AK80-9`, and `AKA60-6`.
-- Conservative current, output-torque, temperature, and telemetry-age guards.
-- One shared CAN manager per SocketCAN channel, with unique motor-ID routing.
-- Context-managed lifecycle with deterministic zero-current cleanup.
-- Strict typing, linting, dead-code checks, and 100% source coverage.
+- **Refactor:** Modular codebase with strict type hinting, linting, and solid architecture.
+- **Zero Bloat:** Focused 100% on reliable Servo CAN operation.
+- **Modern Packaging:** Built with `uv` and `pyproject.toml` for fast, reliable dependency management.
+- **Advanced Configuration:** Safe defaults for AK-series motors with the ability to safely override parameters or define custom motors.
+- **Built-in Motor Presets:** `AK10-9`, `AK80-9`, `AK40-10`, and `AKA60-6`.
+- **Quality Gates:** Mock-based test suite with full source coverage (`src/cubemars_servo_can/*`).
 
-The library never configures network interfaces or runs privileged commands.
-Bring `can0` (or another channel) up before starting the application.
+---
 
-## Install
+## Hardware Setup
+
+**You need a CAN link to use this library.**
+
+We highly recommend the **Waveshare RS485 CAN HAT** for Raspberry Pi.
+
+- [Purchase & Wiki Instructions](https://www.waveshare.com/wiki/RS485_CAN_HAT)
+
+For motor wiring and initial configuration (setting the servo mode and CAN ID) please **refer to the [official tutorial PDF](tutorial.pdf)** included in this repository.
+
+### Raspberry Pi + Waveshare RS485 CAN HAT
+
+Keep hardware bring-up details in one place:
+
+- Full Raspberry/Waveshare setup and single recommended runtime flow (boot-time interface bring-up for `can0`, `can1`, etc.): [Usage Guide](docs/usage.md#before-starting)
+
+---
+
+## Quick Start
+
+### 1. Install
+
+Install directly from the repository using `uv` or `pip`:
 
 ```bash
+# Add as a dependency to your project (uv)
 uv add git+https://github.com/sam0rr/cubemars_servo_can.git
+
+# Install into the current Python environment (pip)
+pip install git+https://github.com/sam0rr/cubemars_servo_can.git
 ```
 
-## Quick start
+---
 
-```python
-import time
+### 2. Run
 
-from cubemars_servo_can import (
-    ControlMode,
-    CubeMarsServoCan,
-    MotorModel,
-    ServoConfig,
-)
+Use the usage guide for mode-by-mode examples:
 
-config = ServoConfig(
-    motor=MotorModel.AK80_9,
-    motor_id=1,
-)
+- [**Usage Guide**](docs/usage.md)
 
-with CubeMarsServoCan(config) as motor:
-    motor.set_control_mode(ControlMode.VELOCITY)
-    motor.set_output_velocity(1.0)
+---
 
-    for _ in range(100):
-        motor.update()
-        time.sleep(0.01)
+### 3. Upgrade
+
+Update to the latest repository version:
+
+```bash
+# If managed in a uv project dependency:
+uv add --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
+
+# If installed with pip:
+pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 ```
 
-The actuator must already be configured for Servo Mode, use the selected CAN
-ID, and upload function `0x29` status frames. Context entry sends zero current
-and requires a fresh exact status frame before returning.
-
-## Public API
-
-Import the supported API from `cubemars_servo_can`:
-
-- `CubeMarsServoCan` and `ServoConfig`
-- `MotorModel` and `MotorConfig`
-- `ControlMode` and `OriginMode`
-- the package-specific exception hierarchy
-
-Modules whose names begin with `_` are implementation details and are not part
-of the supported API.
+---
 
 ## Documentation
 
-- [Usage](docs/usage.md)
-- [Configuration](docs/configuration.md)
-- [Protocol](docs/protocol.md)
+- [**Usage Guide**](docs/usage.md): Detailed usage of Duty, Current, Velocity, and Position modes.
+- [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
 
-Vendor firmware, parameter, and mechanical files remain under the existing
-`AK40-10-firmware-and-parameters/` and
-`AKA60-6-firmware-and-parameters/` directories.
+## Included Vendor Files
+
+- [`AK40-10-firmware-and-parameters`](AK40-10-firmware-and-parameters): Vendor firmware, parameter dumps, and CAD artifacts for AK40-10.
+- [`AKA60-6-firmware-and-parameters`](AKA60-6-firmware-and-parameters): Official AKA60-6 firmware, parameter dumps, and CAD/manual support files.
+
+---
 
 ## Development
 
+To contribute to this library:
+
+1. Clone the repository:
+
 ```bash
-uv sync
-uv run ruff format --check .
-uv run ruff check .
-uv run mypy
-uv run vulture
-uv run pytest
-uv build
+git clone https://github.com/sam0rr/cubemars_servo_can.git
+cd cubemars_servo_can
 ```
 
-The current 1.0 validation is software-only. Before production use, verify
-direction, scaling, limits, fault handling, origin behavior, and shutdown on the
-exact actuator, firmware, bus, load, and emergency-stop system.
+2. Install dependencies:
+
+```bash
+uv sync
+```
+
+3. Run linting and formatting:
+
+```bash
+uv run ruff check . --fix
+uv run ruff format .
+```
+
+4. Run type check:
+
+```bash
+uv run mypy
+```
+
+5. Run dead code check:
+
+```bash
+uv run vulture
+```
+
+6. Run tests:
+
+```bash
+uv run pytest
+```
+
+---
