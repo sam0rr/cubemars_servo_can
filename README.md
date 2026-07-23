@@ -3,8 +3,8 @@
 A small, typed Python 3.13 library for controlling CubeMars AK and AKA
 actuators over SocketCAN in Servo Mode.
 
-Version 1.0 is intentionally forward-only. It exposes one configuration object,
-one controller, explicit SI-unit names, and no deprecated aliases.
+Version 1.0 exposes one configuration object, one controller, and explicit
+SI-unit names.
 
 ## Features
 
@@ -71,9 +71,6 @@ of the supported API.
 - [Usage](docs/usage.md)
 - [Configuration](docs/configuration.md)
 - [Protocol](docs/protocol.md)
-- [Migration to 1.0](docs/migration-1.0.md)
-- [Changelog](CHANGELOG.md)
-- [Verified bug and behavior register](BUG_FIX_SUMMARY.md)
 
 Vendor firmware, parameter, and mechanical files remain under the existing
 `AK40-10-firmware-and-parameters/` and
@@ -94,9 +91,3 @@ uv build
 The current 1.0 validation is software-only. Before production use, verify
 direction, scaling, limits, fault handling, origin behavior, and shutdown on the
 exact actuator, firmware, bus, load, and emergency-stop system.
-
-## Credits
-
-This project originated from
-[TMotorCANControl](https://github.com/neurobionics/TMotorCANControl) and now
-provides a focused Servo Mode API.

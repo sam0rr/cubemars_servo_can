@@ -16,8 +16,7 @@ config = ServoConfig(
 )
 ```
 
-Configuration is constructed explicitly. There are no dictionary overrides,
-copy helpers, deprecated names, or compatibility aliases.
+Configuration is constructed explicitly through typed fields.
 
 ## Built-in motor data
 

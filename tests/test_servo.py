@@ -258,7 +258,7 @@ def test_update_sends_every_control_mode(
 
 
 def test_control_mode_duty_and_current_validation() -> None:
-    """Reject legacy mode values and unsafe duty or current targets."""
+    """Reject invalid mode values and unsafe duty or current targets."""
     servo = make_servo()
     with pytest.raises(TypeError, match="ControlMode"):
         servo.set_control_mode(cast(ControlMode, "velocity"))
@@ -317,7 +317,7 @@ def test_position_commands_validate_modes_profiles_and_protocol_ranges() -> None
 
 
 def test_velocity_torque_and_motor_side_wrappers() -> None:
-    """Convert explicit SI commands without compatibility aliases."""
+    """Convert explicit SI commands for output-side and motor-side values."""
     servo = make_servo()
     with pytest.raises(ControlModeError, match="velocity"):
         servo.set_output_velocity(0.0)

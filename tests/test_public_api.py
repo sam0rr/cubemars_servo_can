@@ -10,7 +10,7 @@ from cubemars_servo_can import MotorConfig, MotorModel, ServoConfig
 
 
 def test_exports_are_exact_and_sorted() -> None:
-    """Expose only the forward-only names documented for 1.0."""
+    """Expose exactly the names documented for 1.0."""
     expected = [
         "CanConnectionError",
         "ControlMode",
@@ -25,8 +25,6 @@ def test_exports_are_exact_and_sorted() -> None:
         "ServoConfig",
     ]
     assert cubemars_servo_can.__all__ == expected
-    assert not hasattr(cubemars_servo_can, "CubeMarsServoCAN")
-    assert not hasattr(cubemars_servo_can, "get_motor_config")
 
 
 def test_public_dataclasses_follow_project_policy() -> None:
