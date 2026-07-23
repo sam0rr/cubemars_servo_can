@@ -64,7 +64,7 @@ def test_status_round_trip_over_virtual_can(monkeypatch: pytest.MonkeyPatch) -> 
         )
         assert sink.event.wait(1.0)
         assert sink.telemetry is not None
-        assert sink.telemetry.electrical_position_degrees == 1.0
+        assert sink.telemetry.motor_position_degrees == 1.0
         assert sink.telemetry.velocity_erpm == 200.0
     finally:
         manager.unregister(motor_id=3)

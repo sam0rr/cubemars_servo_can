@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class ServoTelemetry:
     """One immutable decoded status sample in documented protocol units."""
 
-    electrical_position_degrees: float = 0.0
+    motor_position_degrees: float = 0.0
     velocity_erpm: float = 0.0
     q_axis_current_amps: float = 0.0
     temperature_celsius: float = 0.0
@@ -20,7 +20,7 @@ class ServoTelemetry:
 class ServoCommand:
     """Mutable command targets staged until the next update."""
 
-    electrical_position_degrees: float = 0.0
+    motor_position_degrees: float = 0.0
     velocity_erpm: float = 0.0
     q_axis_current_amps: float = 0.0
     duty_cycle: float = 0.0

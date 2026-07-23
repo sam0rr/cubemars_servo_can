@@ -36,7 +36,7 @@ from cubemars_servo_can.constants import _PacketId
         (
             _protocol.encode_position(
                 motor_id=5,
-                electrical_position_degrees=12.3456,
+                motor_position_degrees=12.3456,
             ),
             0x405,
             struct.pack(">i", 123_455),
@@ -52,7 +52,7 @@ from cubemars_servo_can.constants import _PacketId
         (
             _protocol.encode_position_velocity(
                 motor_id=7,
-                electrical_position_degrees=1.5,
+                motor_position_degrees=1.5,
                 velocity_erpm=1_230.0,
                 acceleration_erpm_per_second=4_560.0,
             ),
@@ -83,7 +83,7 @@ def test_decode_status_uses_documented_scales_and_signed_temperature() -> None:
         data=struct.pack(">hhhbB", -123, 45, -678, -12, 7),
         received_at_seconds=4.5,
     )
-    assert state.electrical_position_degrees == pytest.approx(-12.3)
+    assert state.motor_position_degrees == pytest.approx(-12.3)
     assert state.velocity_erpm == 450.0
     assert state.q_axis_current_amps == pytest.approx(-6.78)
     assert state.temperature_celsius == -12.0
@@ -98,33 +98,41 @@ def test_protocol_rejects_malformed_and_out_of_range_values() -> None:
         _protocol.decode_status(data=b"short", received_at_seconds=0.0)
     with pytest.raises(ValueError, match="negative"):
         _protocol.encode_current_brake(motor_id=1, current_amps=-0.1)
+    with pytest.raises(ValueError, match="finite"):
+        _protocol.encode_current_brake(motor_id=1, current_amps=math.nan)
     with pytest.raises(ValueError, match="60 A"):
         _protocol.encode_current_brake(motor_id=1, current_amps=60.1)
+    with pytest.raises(ValueError, match="60"):
+        _protocol.encode_current(motor_id=1, current_amps=-60.1)
     with pytest.raises(ValueError, match="finite"):
         _protocol.encode_current(motor_id=1, current_amps=math.inf)
+    with pytest.raises(ValueError, match="100000"):
+        _protocol.encode_velocity(motor_id=1, velocity_erpm=100_000.1)
+    with pytest.raises(ValueError, match="finite"):
+        _protocol.encode_duty_cycle(motor_id=1, duty_cycle=math.inf)
     with pytest.raises(ValueError, match="36,000"):
         _protocol.encode_position(
             motor_id=1,
-            electrical_position_degrees=1_000_000.0,
+            motor_position_degrees=1_000_000.0,
         )
     with pytest.raises(ValueError, match="36,000"):
         _protocol.encode_position_velocity(
             motor_id=1,
-            electrical_position_degrees=-36_000.1,
+            motor_position_degrees=-36_000.1,
             velocity_erpm=0.0,
             acceleration_erpm_per_second=0.0,
         )
     with pytest.raises(ValueError, match="int16"):
         _protocol.encode_position_velocity(
             motor_id=1,
-            electrical_position_degrees=0.0,
+            motor_position_degrees=0.0,
             velocity_erpm=400_000.0,
             acceleration_erpm_per_second=0.0,
         )
     with pytest.raises(ValueError, match="negative"):
         _protocol.encode_position_velocity(
             motor_id=1,
-            electrical_position_degrees=0.0,
+            motor_position_degrees=0.0,
             velocity_erpm=0.0,
             acceleration_erpm_per_second=-10.0,
         )

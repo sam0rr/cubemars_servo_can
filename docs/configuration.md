@@ -29,6 +29,9 @@ Configuration is constructed explicitly through typed fields.
 
 Hardware maxima are reference data, not default commands. An explicit override
 may lower a default cap but cannot exceed the corresponding hardware maximum.
+Commands also remain within the Servo wire limits: ±60 A q-axis current, 0–60 A
+brake current, ±100,000 ERPM in velocity mode, and ±36,000 motor-shaft degrees
+in position modes.
 
 ## Runtime fields
 

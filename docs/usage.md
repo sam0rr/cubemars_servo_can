@@ -73,6 +73,9 @@ motor.set_q_axis_current_amps(1.5)
 motor.update()
 ```
 
+Q-axis current is limited to ±60 A and may be further restricted by the motor
+configuration.
+
 ### Estimated torque
 
 ```python
@@ -118,7 +121,8 @@ motor.set_q_axis_current_amps(1.0)
 motor.update()
 ```
 
-Brake current must be non-negative.
+Brake current is limited to the inclusive range from 0 A to 60 A and may be
+further restricted by the motor configuration.
 
 ### Duty cycle
 

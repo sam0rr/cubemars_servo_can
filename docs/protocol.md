@@ -15,7 +15,7 @@ and exactly eight payload bytes.
 | Q-axis current    | `0x01` | signed int32, amps × 1,000                                   |
 | Current brake     | `0x02` | signed int32, amps × 1,000                                   |
 | Velocity          | `0x03` | signed int32 ERPM                                            |
-| Position          | `0x04` | signed int32, electrical degrees × 10,000                    |
+| Position          | `0x04` | signed int32, motor-shaft degrees × 10,000                   |
 | Origin            | `0x05` | one byte: temporary `0`, persistent `1`                      |
 | Position/velocity | `0x06` | int32 position, int16 velocity ÷ 10, int16 acceleration ÷ 10 |
 
@@ -23,20 +23,21 @@ All multi-byte integers are big-endian. Position/velocity frames contain eight
 bytes. The `0xFC` and `0xFD` eight-byte frames used by MIT Mode are deliberately
 absent from this Servo Mode lifecycle.
 
-Electrical-position commands are limited to ±36,000 degrees. Current-brake
-commands are limited to the inclusive range from 0 A to 60 A.
+Motor-shaft position commands are limited to ±36,000 degrees. Q-axis current is
+limited to ±60 A, current brake to 0–60 A, and velocity-loop commands to
+±100,000 ERPM.
 
 ## Status
 
 The `0x29` payload layout is:
 
-| Bytes | Type          | Value                             |
-| ----- | ------------- | --------------------------------- |
-| 0–1   | signed int16  | electrical position × 0.1 degrees |
-| 2–3   | signed int16  | velocity × 10 ERPM                |
-| 4–5   | signed int16  | q-axis current × 0.01 A           |
-| 6     | signed int8   | driver temperature in °C          |
-| 7     | unsigned int8 | fault code                        |
+| Bytes | Type          | Value                              |
+| ----- | ------------- | ---------------------------------- |
+| 0–1   | signed int16  | motor-shaft position × 0.1 degrees |
+| 2–3   | signed int16  | velocity × 10 ERPM                 |
+| 4–5   | signed int16  | q-axis current × 0.01 A            |
+| 6     | signed int8   | driver temperature in °C           |
+| 7     | unsigned int8 | fault code                         |
 
 Fault descriptions include MOSFET over-temperature (`6`) and motor stall
 (`7`) according to the current driver manual.
@@ -45,7 +46,7 @@ Fault descriptions include MOSFET over-temperature (`6`) and motor stall
 
 `output rad/s = ERPM × 2π / (60 × pole pairs × gear ratio)`
 
-`output rad = electrical degrees × π / (180 × pole pairs × gear ratio)`
+`output rad = motor-shaft degrees × π / (180 × gear ratio)`
 
 Torque is an ideal estimate:
 

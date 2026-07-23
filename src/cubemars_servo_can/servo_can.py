@@ -10,8 +10,10 @@ from typing import Self
 from ._can_manager import CanManager, CanManagerRegistry
 from ._motor_state import ServoCommand, ServoTelemetry
 from ._protocol import (
-    CURRENT_BRAKE_LIMIT_AMPS,
-    POSITION_LIMIT_DEGREES,
+    CURRENT_LIMIT_AMPS,
+    MOTOR_POSITION_LIMIT_DEGREES,
+    PROFILE_VELOCITY_LIMIT_ERPM,
+    VELOCITY_LIMIT_ERPM,
     CanFrame,
     encode_current,
     encode_current_brake,
@@ -134,10 +136,7 @@ class CubeMarsServoCan:
     @property
     def output_position_radians(self) -> float:
         """Return gearbox-output position in radians."""
-        return (
-            self._telemetry.electrical_position_degrees
-            * self._output_radians_per_electrical_degree
-        )
+        return self._telemetry.motor_position_degrees * self._output_radians_per_degree
 
     @property
     def output_velocity_radians_per_second(self) -> float:
@@ -188,11 +187,9 @@ class CubeMarsServoCan:
         )
 
     @property
-    def _output_radians_per_electrical_degree(self) -> float:
-        """Return the electrical-degree to output-radian conversion."""
-        return math.pi / (
-            180.0 * self.motor_config.pole_pairs * self.motor_config.gear_ratio
-        )
+    def _output_radians_per_degree(self) -> float:
+        """Return the motor-degree to output-radian conversion."""
+        return math.pi / (180.0 * self.motor_config.gear_ratio)
 
     @property
     def _output_radians_per_second_per_erpm(self) -> float:
@@ -244,11 +241,10 @@ class CubeMarsServoCan:
             raise ControlModeError(
                 "current commands require q-axis-current or current-brake mode"
             )
-        minimum = -self.config.current_limit_amps
-        maximum = self.config.current_limit_amps
+        maximum = min(self.config.current_limit_amps, CURRENT_LIMIT_AMPS)
+        minimum = -maximum
         if self._control_mode is ControlMode.CURRENT_BRAKE:
             minimum = 0.0
-            maximum = min(maximum, CURRENT_BRAKE_LIMIT_AMPS)
         self._check_range(
             value=current_amps,
             minimum=minimum,
@@ -275,20 +271,21 @@ class CubeMarsServoCan:
             )
         if not math.isfinite(position_radians):
             raise ValueError("position must be finite")
-        electrical_degrees = (
-            position_radians / self._output_radians_per_electrical_degree
-        )
+        motor_degrees = position_radians / self._output_radians_per_degree
         self._check_range(
-            value=electrical_degrees,
-            minimum=-POSITION_LIMIT_DEGREES,
-            maximum=POSITION_LIMIT_DEGREES,
-            label="Electrical position",
+            value=motor_degrees,
+            minimum=-MOTOR_POSITION_LIMIT_DEGREES,
+            maximum=MOTOR_POSITION_LIMIT_DEGREES,
+            label="Motor position",
             unit="degrees",
         )
         velocity_erpm = self._command.velocity_erpm
         acceleration_erpm_per_second = self._command.acceleration_erpm_per_second
         if self._control_mode is ControlMode.POSITION_VELOCITY:
-            velocity_erpm = self._output_velocity_to_erpm(velocity_radians_per_second)
+            velocity_erpm = self._output_velocity_to_erpm(
+                velocity_radians_per_second,
+                protocol_limit_erpm=PROFILE_VELOCITY_LIMIT_ERPM,
+            )
             if (
                 not math.isfinite(acceleration_radians_per_second_squared)
                 or acceleration_radians_per_second_squared < 0.0
@@ -300,7 +297,7 @@ class CubeMarsServoCan:
             )
             encode_position_velocity(
                 motor_id=self.config.motor_id,
-                electrical_position_degrees=electrical_degrees,
+                motor_position_degrees=motor_degrees,
                 velocity_erpm=velocity_erpm,
                 acceleration_erpm_per_second=acceleration_erpm_per_second,
             )
@@ -314,9 +311,9 @@ class CubeMarsServoCan:
                 )
             encode_position(
                 motor_id=self.config.motor_id,
-                electrical_position_degrees=electrical_degrees,
+                motor_position_degrees=motor_degrees,
             )
-        self._command.electrical_position_degrees = electrical_degrees
+        self._command.motor_position_degrees = motor_degrees
         self._command.velocity_erpm = velocity_erpm
         self._command.acceleration_erpm_per_second = acceleration_erpm_per_second
 
@@ -324,7 +321,8 @@ class CubeMarsServoCan:
         """Stage gearbox-output velocity in radians per second."""
         self._require_mode(ControlMode.VELOCITY)
         self._command.velocity_erpm = self._output_velocity_to_erpm(
-            velocity_radians_per_second
+            velocity_radians_per_second,
+            protocol_limit_erpm=VELOCITY_LIMIT_ERPM,
         )
 
     def set_output_torque(self, torque_newton_meters: float) -> None:
@@ -446,7 +444,7 @@ class CubeMarsServoCan:
                     telemetry.velocity_erpm - self._telemetry.velocity_erpm
                 ) / elapsed
             self._telemetry = ServoTelemetry(
-                electrical_position_degrees=telemetry.electrical_position_degrees,
+                motor_position_degrees=telemetry.motor_position_degrees,
                 velocity_erpm=telemetry.velocity_erpm,
                 q_axis_current_amps=telemetry.q_axis_current_amps,
                 temperature_celsius=telemetry.temperature_celsius,
@@ -493,12 +491,12 @@ class CubeMarsServoCan:
         elif self._control_mode is ControlMode.POSITION:
             frame = encode_position(
                 motor_id=self.config.motor_id,
-                electrical_position_degrees=(self._command.electrical_position_degrees),
+                motor_position_degrees=self._command.motor_position_degrees,
             )
         elif self._control_mode is ControlMode.POSITION_VELOCITY:
             frame = encode_position_velocity(
                 motor_id=self.config.motor_id,
-                electrical_position_degrees=(self._command.electrical_position_degrees),
+                motor_position_degrees=self._command.motor_position_degrees,
                 velocity_erpm=self._command.velocity_erpm,
                 acceleration_erpm_per_second=(
                     self._command.acceleration_erpm_per_second
@@ -513,12 +511,12 @@ class CubeMarsServoCan:
         if self._control_mode is ControlMode.POSITION:
             frame = encode_position(
                 motor_id=self.config.motor_id,
-                electrical_position_degrees=telemetry.electrical_position_degrees,
+                motor_position_degrees=telemetry.motor_position_degrees,
             )
         elif self._control_mode is ControlMode.POSITION_VELOCITY:
             frame = encode_position_velocity(
                 motor_id=self.config.motor_id,
-                electrical_position_degrees=telemetry.electrical_position_degrees,
+                motor_position_degrees=telemetry.motor_position_degrees,
                 velocity_erpm=0.0,
                 acceleration_erpm_per_second=0.0,
             )
@@ -544,10 +542,12 @@ class CubeMarsServoCan:
     def _output_velocity_to_erpm(
         self,
         velocity_radians_per_second: float,
+        *,
+        protocol_limit_erpm: float,
     ) -> float:
         """Convert and validate an output velocity command."""
         erpm = velocity_radians_per_second / (self._output_radians_per_second_per_erpm)
-        maximum = self.motor_config.max_velocity_erpm
+        maximum = min(self.motor_config.max_velocity_erpm, protocol_limit_erpm)
         tolerance = 1e-6
         if not math.isfinite(erpm):
             raise ValueError("velocity must be finite")

@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from ._motor_state import ServoTelemetry
 from .constants import OriginMode, _PacketId
 
-CURRENT_BRAKE_LIMIT_AMPS = 60.0
-POSITION_LIMIT_DEGREES = 36_000.0
+CURRENT_LIMIT_AMPS = 60.0
+MOTOR_POSITION_LIMIT_DEGREES = 36_000.0
+PROFILE_VELOCITY_LIMIT_ERPM = 327_670.0
+VELOCITY_LIMIT_ERPM = 100_000.0
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -43,6 +45,12 @@ def encode_duty_cycle(*, motor_id: int, duty_cycle: float) -> CanFrame:
 
 def encode_current(*, motor_id: int, current_amps: float) -> CanFrame:
     """Encode a q-axis current command."""
+    validate_signed_limit(
+        value=current_amps,
+        maximum=CURRENT_LIMIT_AMPS,
+        label="q-axis current",
+        unit="A",
+    )
     return scaled_int32_frame(
         motor_id=motor_id,
         packet_id=_PacketId.SET_CURRENT,
@@ -53,9 +61,11 @@ def encode_current(*, motor_id: int, current_amps: float) -> CanFrame:
 
 def encode_current_brake(*, motor_id: int, current_amps: float) -> CanFrame:
     """Encode a non-negative current-brake command."""
+    if not math.isfinite(current_amps):
+        raise ValueError("brake current must be finite")
     if current_amps < 0.0:
         raise ValueError("brake current must not be negative")
-    if current_amps > CURRENT_BRAKE_LIMIT_AMPS:
+    if current_amps > CURRENT_LIMIT_AMPS:
         raise ValueError("brake current exceeds the 60 A protocol limit")
     return scaled_int32_frame(
         motor_id=motor_id,
@@ -67,6 +77,12 @@ def encode_current_brake(*, motor_id: int, current_amps: float) -> CanFrame:
 
 def encode_velocity(*, motor_id: int, velocity_erpm: float) -> CanFrame:
     """Encode an electrical-RPM velocity command."""
+    validate_signed_limit(
+        value=velocity_erpm,
+        maximum=VELOCITY_LIMIT_ERPM,
+        label="velocity",
+        unit="ERPM",
+    )
     return scaled_int32_frame(
         motor_id=motor_id,
         packet_id=_PacketId.SET_VELOCITY,
@@ -75,13 +91,13 @@ def encode_velocity(*, motor_id: int, velocity_erpm: float) -> CanFrame:
     )
 
 
-def encode_position(*, motor_id: int, electrical_position_degrees: float) -> CanFrame:
-    """Encode an electrical-position command in degrees."""
-    validate_position(electrical_position_degrees)
+def encode_position(*, motor_id: int, motor_position_degrees: float) -> CanFrame:
+    """Encode a motor-shaft position command in degrees."""
+    validate_position(motor_position_degrees)
     return scaled_int32_frame(
         motor_id=motor_id,
         packet_id=_PacketId.SET_POSITION,
-        value=electrical_position_degrees,
+        value=motor_position_degrees,
         scale=10_000.0,
     )
 
@@ -100,13 +116,13 @@ def encode_origin(*, motor_id: int, mode: OriginMode) -> CanFrame:
 def encode_position_velocity(
     *,
     motor_id: int,
-    electrical_position_degrees: float,
+    motor_position_degrees: float,
     velocity_erpm: float,
     acceleration_erpm_per_second: float,
 ) -> CanFrame:
     """Encode a profiled position command in the manual's 10-ERPM units."""
-    validate_position(electrical_position_degrees)
-    position = scaled_integer(electrical_position_degrees, 10_000.0, bits=32)
+    validate_position(motor_position_degrees)
+    position = scaled_integer(motor_position_degrees, 10_000.0, bits=32)
     velocity = scaled_integer(velocity_erpm, 0.1, bits=16)
     acceleration = scaled_integer(
         acceleration_erpm_per_second,
@@ -130,7 +146,7 @@ def decode_status(*, data: bytes, received_at_seconds: float) -> ServoTelemetry:
         raise ValueError(f"Servo status payload must contain 8 bytes, got {len(data)}")
     position, velocity, current, temperature, fault = struct.unpack(">hhhbB", data)
     return ServoTelemetry(
-        electrical_position_degrees=position * 0.1,
+        motor_position_degrees=position * 0.1,
         velocity_erpm=velocity * 10.0,
         q_axis_current_amps=current * 0.01,
         temperature_celsius=float(temperature),
@@ -172,15 +188,27 @@ def scaled_integer(value: float, scale: float, *, bits: int) -> int:
     return encoded
 
 
-def validate_position(electrical_position_degrees: float) -> None:
-    """Keep electrical-position commands within the Servo protocol range."""
+def validate_position(motor_position_degrees: float) -> None:
+    """Keep motor-position commands within the Servo protocol range."""
     if (
-        not math.isfinite(electrical_position_degrees)
-        or abs(electrical_position_degrees) > POSITION_LIMIT_DEGREES
+        not math.isfinite(motor_position_degrees)
+        or abs(motor_position_degrees) > MOTOR_POSITION_LIMIT_DEGREES
     ):
-        raise ValueError(
-            "electrical position must be finite and within ±36,000 degrees"
-        )
+        raise ValueError("motor position must be finite and within ±36,000 degrees")
+
+
+def validate_signed_limit(
+    *,
+    value: float,
+    maximum: float,
+    label: str,
+    unit: str,
+) -> None:
+    """Validate a finite value against a symmetric protocol limit."""
+    if not math.isfinite(value):
+        raise ValueError(f"{label} must be finite")
+    if not -maximum <= value <= maximum:
+        raise ValueError(f"{label} exceeds the ±{maximum:g} {unit} protocol limit")
 
 
 def validate_motor_id(motor_id: int) -> None:
