@@ -71,9 +71,11 @@ def test_command_frames_match_vendor_golden_vectors(
     assert frame.data == expected_data
 
 
-def test_status_id_is_exact() -> None:
-    """Accept only function 0x29 as the current documented status ID."""
-    assert _protocol.status_arbitration_id(motor_id=0x2A) == 0x292A
+def test_status_ids_are_explicit() -> None:
+    """Accept exact-ID, startup, and real-time feedback identifiers."""
+    assert _protocol.status_arbitration_ids(motor_id=0x2A) == frozenset(
+        (0x002A, 0x092A, 0x292A)
+    )
     assert _protocol.arbitration_id(motor_id=1, packet_id=_PacketId.STATUS) == 0x2901
 
 

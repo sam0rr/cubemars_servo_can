@@ -386,7 +386,7 @@ class CubeMarsServoCan:
         self.set_output_torque(torque_newton_meters * self.motor_config.gear_ratio)
 
     def check_connection(self) -> bool:
-        """Send zero current and wait for a fresh exact Servo status frame."""
+        """Send zero current and wait for a fresh Servo feedback frame."""
         self._require_entered()
         self._status_event.clear()
         self._send_frame(

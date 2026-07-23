@@ -11,7 +11,7 @@ from ._motor_state import ServoTelemetry
 from ._protocol import (
     CanFrame,
     decode_status,
-    status_arbitration_id,
+    status_arbitration_ids,
 )
 from .errors import CanConnectionError
 
@@ -29,11 +29,12 @@ class TelemetrySink(Protocol):
 
 
 class MotorListener(can.Listener):
-    """Route one motor's exact extended status frames to its sink."""
+    """Route one motor's explicit extended feedback frames to its sink."""
 
     def __init__(self, *, motor_id: int, sink: TelemetrySink) -> None:
         """Store immutable routing data."""
-        self._status_id = status_arbitration_id(motor_id=motor_id)
+        self._motor_id = motor_id
+        self._status_ids = status_arbitration_ids(motor_id=motor_id)
         self._sink: TelemetrySink | None = sink
 
     def deactivate(self) -> None:
@@ -45,13 +46,16 @@ class MotorListener(can.Listener):
         sink = self._sink
         if (
             sink is None
-            or msg.arbitration_id != self._status_id
+            or msg.arbitration_id not in self._status_ids
             or not msg.is_extended_id
         ):
             return
+        data = bytes(msg.data)
+        if msg.arbitration_id == self._motor_id and len(data) != 8:
+            return
         try:
             telemetry = decode_status(
-                data=bytes(msg.data),
+                data=data,
                 received_at_seconds=time.monotonic(),
             )
         except (TypeError, ValueError) as error:

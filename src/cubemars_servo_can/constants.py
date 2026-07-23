@@ -42,6 +42,7 @@ class _PacketId(IntEnum):
     SET_POSITION = 0x04
     SET_ORIGIN = 0x05
     SET_POSITION_VELOCITY = 0x06
+    STARTUP_STATUS = 0x09
     STATUS = 0x29
 
 

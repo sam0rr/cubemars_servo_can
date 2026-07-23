@@ -4,8 +4,11 @@ CubeMars Servo CAN uses extended arbitration IDs:
 
 `arbitration ID = (function ID << 8) | motor ID`
 
-The library accepts status only at function ID `0x29`, with an extended frame
-and exactly eight payload bytes.
+The library accepts the real-time status function ID `0x29`, startup-state
+function ID `0x09`, and exact motor-ID feedback emitted by supported controller
+firmware. Feedback must use an extended frame and exactly eight payload bytes.
+Short exact-ID frames are ignored because they can be local duty-command
+loopback.
 
 ---
 
@@ -33,7 +36,7 @@ limited to ±60 A, current brake to 0–60 A, and velocity-loop commands to
 
 ## Status
 
-The `0x29` payload layout is:
+The feedback payload layout is:
 
 | Bytes | Type          | Value                              |
 | ----- | ------------- | ---------------------------------- |

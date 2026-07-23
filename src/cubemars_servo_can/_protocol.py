@@ -34,9 +34,16 @@ class CanFrame:
             raise ValueError("Classic CAN payloads cannot exceed 8 bytes")
 
 
-def status_arbitration_id(*, motor_id: int) -> int:
-    """Return the exact Servo status identifier for a motor."""
-    return arbitration_id(motor_id=motor_id, packet_id=_PacketId.STATUS)
+def status_arbitration_ids(*, motor_id: int) -> frozenset[int]:
+    """Return the explicit Servo feedback identifiers accepted for a motor."""
+    validate_motor_id(motor_id)
+    return frozenset(
+        (
+            motor_id,
+            motor_id | (_PacketId.STARTUP_STATUS << 8),
+            motor_id | (_PacketId.STATUS << 8),
+        )
+    )
 
 
 def encode_duty_cycle(*, motor_id: int, duty_cycle: float) -> CanFrame:

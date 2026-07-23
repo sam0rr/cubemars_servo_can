@@ -165,14 +165,14 @@ def test_cleanup_is_best_effort_and_failed_removal_deactivates_listener(
     assert listener is not None
 
 
-def test_listener_routes_only_exact_extended_status(
+def test_listener_routes_only_explicit_extended_feedback(
     can_harness: CanHarness,
 ) -> None:
-    """Ignore unrelated frames and report malformed matching status."""
+    """Accept known feedback IDs while rejecting standard and command frames."""
     sink = TelemetrySink()
     listener = MotorListener(motor_id=1, sink=sink)
     listener.on_message_received(
-        can.Message(arbitration_id=1, data=b"12345678", is_extended_id=True)
+        can.Message(arbitration_id=0x0801, data=b"12345678", is_extended_id=True)
     )
     listener.on_message_received(
         can.Message(
@@ -184,19 +184,40 @@ def test_listener_routes_only_exact_extended_status(
     assert not sink.telemetry
     assert not sink.errors
 
+    for arbitration_id in (0x0001, 0x0901, 0x2901):
+        listener.on_message_received(
+            can.Message(
+                arbitration_id=arbitration_id,
+                data=can_harness.status_payload,
+                is_extended_id=True,
+            )
+        )
+    assert len(sink.telemetry) == 3
+    assert all(sample.temperature_celsius == 25.0 for sample in sink.telemetry)
+
+    listener.on_message_received(
+        can.Message(
+            arbitration_id=0x0601,
+            data=b"12345678",
+            is_extended_id=True,
+        )
+    )
+    assert len(sink.telemetry) == 3
+    assert not sink.errors
+
     listener.on_message_received(
         can.Message(arbitration_id=0x2901, data=b"bad", is_extended_id=True)
     )
     assert len(sink.errors) == 1
     listener.on_message_received(
         can.Message(
-            arbitration_id=0x2901,
-            data=can_harness.status_payload,
+            arbitration_id=0x0001,
+            data=b"duty",
             is_extended_id=True,
         )
     )
-    assert len(sink.telemetry) == 1
-    assert sink.telemetry[0].temperature_celsius == 25.0
+    assert len(sink.telemetry) == 3
+    assert len(sink.errors) == 1
     listener.deactivate()
     listener.on_message_received(
         can.Message(
@@ -205,4 +226,4 @@ def test_listener_routes_only_exact_extended_status(
             is_extended_id=True,
         )
     )
-    assert len(sink.telemetry) == 1
+    assert len(sink.telemetry) == 3
