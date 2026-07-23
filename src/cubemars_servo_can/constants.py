@@ -1,51 +1,58 @@
-from enum import IntEnum
-from typing import Dict, List, Final
+"""Public enumerations and internal protocol constants."""
+
+from enum import IntEnum, StrEnum
+from typing import Final
 
 
-class ControlMode(IntEnum):
-    """
-    Control states for the servo motor.
-    Using IntEnum allows these to be directly used in integer comparisons/bitwise operations if needed.
-    """
+class ControlMode(StrEnum):
+    """Available Servo Mode control strategies."""
 
-    DUTY_CYCLE = 0
-    CURRENT_LOOP = 1
-    CURRENT_BRAKE = 2
-    VELOCITY = 3
-    POSITION = 4
-    SET_ORIGIN = 5
-    POSITION_VELOCITY = 6
-    IDLE = 7
+    IDLE = "idle"
+    DUTY_CYCLE = "duty_cycle"
+    Q_AXIS_CURRENT = "q_axis_current"
+    CURRENT_BRAKE = "current_brake"
+    VELOCITY = "velocity"
+    POSITION = "position"
+    POSITION_VELOCITY = "position_velocity"
 
 
-# CAN Command IDs
-# These are the sub-indices used in the CAN arbitration ID to specify the command type.
-CAN_PACKET_ID: Final[Dict[str, int]] = {
-    "SET_DUTY": 0,  # Duty cycle mode
-    "SET_CURRENT": 1,  # Current loop mode
-    "SET_CURRENT_BRAKE": 2,  # Current brake mode
-    "SET_RPM": 3,  # Velocity mode
-    "SET_POS": 4,  # Position loop mode
-    "SET_ORIGIN_HERE": 5,  # Set origin mode
-    "SET_POS_SPD": 6,  # Position velocity loop mode
+class OriginMode(IntEnum):
+    """Origin operations documented by the Servo Mode protocol."""
+
+    TEMPORARY = 0
+    PERSISTENT = 1
+
+
+class MotorModel(StrEnum):
+    """Actuator models with built-in conversion factors and safety caps."""
+
+    AK10_9 = "AK10-9"
+    AK40_10 = "AK40-10"
+    AK80_9 = "AK80-9"
+    AKA60_6 = "AKA60-6"
+
+
+class _PacketId(IntEnum):
+    """Servo Mode function identifiers encoded in the arbitration ID."""
+
+    SET_DUTY = 0x00
+    SET_CURRENT = 0x01
+    SET_CURRENT_BRAKE = 0x02
+    SET_VELOCITY = 0x03
+    SET_POSITION = 0x04
+    SET_ORIGIN = 0x05
+    SET_POSITION_VELOCITY = 0x06
+    STARTUP_STATUS = 0x09
+    STATUS = 0x29
+
+
+_FAULT_DESCRIPTIONS: Final[dict[int, str]] = {
+    0: "no fault",
+    1: "over-temperature fault",
+    2: "over-current fault",
+    3: "over-voltage fault",
+    4: "under-voltage fault",
+    5: "encoder fault",
+    6: "MOSFET over-temperature fault",
+    7: "motor stall fault",
 }
-
-# Error Codes
-# Mapping from the motor's error byte to a human-readable description.
-ERROR_CODES: Final[Dict[int, str]] = {
-    0: "No Error",
-    1: "Over temperature fault",
-    2: "Over current fault",
-    3: "Over voltage fault",
-    4: "Under voltage fault",
-    5: "Encoder fault",
-    6: "Phase current unbalance fault (The hardware may be damaged)",
-}
-
-# Default variables to be logged to CSV
-DEFAULT_LOG_VARIABLES: Final[List[str]] = [
-    "motor_position",
-    "motor_speed",
-    "motor_current",
-    "motor_temperature",
-]

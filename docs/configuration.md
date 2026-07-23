@@ -1,139 +1,83 @@
-# Motor Configuration
+# Configuration
 
----
-
-## Default Configurations
-
-The library comes with built-in support for popular CubeMars motors:
-
-- **AK80-9** (Default)
-- **AK10-9**
-- **AK40-10**
-- **AKA60-6**
-
-To use a specific motor:
+Every controller receives exactly one immutable `ServoConfig`.
 
 ```python
-with CubeMarsServoCAN(motor_type='AK10-9', motor_ID=1) as motor:
-    # Motor is loaded with AK10-9 specs (V_max=100k, Kt=0.16)
-    pass
+from cubemars_servo_can import MotorModel, ServoConfig
+
+config = ServoConfig(
+    motor=MotorModel.AK80_9,
+    motor_id=1,
+    can_channel="can0",
+    max_current_amps=10.0,
+    max_output_torque_newton_meters=8.0,
+    max_driver_temperature_celsius=70.0,
+    telemetry_timeout_seconds=0.1,
+)
 ```
 
-### AKA60-6 Preset Notes
-
-The `AKA60-6` preset uses the real vendor files in
-`AKA60-6-firmware-and-parameters/` plus the official published actuator specs.
-
-- `GEAR_RATIO = 6`
-- `NUM_POLE_PAIRS = 14`
-- `V_max = 50000 ERPM` from `AKA60-6_V3_2_20250222.McParams`
-- `Curr_max = 60.0 A` command cap in this library (`6000` in config storage units), from `AKA60-6_V3_2_20250222.McParams`
-- `T_max = 9.0 Nm` from the official AKA60-6 KV80 actuator peak torque spec
-
-Two fields still require interpretation for this library's torque API:
-
-- `Kt_TMotor = 0.11937` comes from the published `KV80` motor constant.
-- `Kt_actual = 0.134` is kept as the actuator-facing torque constant so the library's torque model reaches the published `9 Nm` peak torque at the published `11.2 A` peak current.
-
-### AK40-10 Preset Notes
-
-The `AK40-10` preset has been cross-checked against both:
-
-- `AK40-10 KV170.McParams`
-- the current official CubeMars `AK40-10 KV170` product spec page
-
-The resulting library preset uses:
-
-- `V_max = 60000 ERPM` from the vendor `.McParams`
-- `NUM_POLE_PAIRS = 14` from the official product spec
-- `Curr_max = 7.3 A` command cap (`730` in config storage units) from the official actuator peak-current spec
-- `T_max = 4.1 Nm` from the official actuator peak-torque spec
-
-`Kt_actual` is chosen so the published `4.1 Nm` peak torque maps to the published `7.3 A` peak current through the library torque model.
+Configuration is constructed explicitly through typed fields.
 
 ---
 
-## Overriding Parameters
+## Built-in motor data
 
-You may want to tweak a specific parameter (e.g., using a different gear ratio or limiting the max current further for safety). You can pass `config_overrides` to the constructor.
+| Model   | Pole pairs | Gear ratio | Max ERPM | Kt (Nm/A) | Hardware current | Default current | Hardware output torque | Default output torque |
+| ------- | ---------: | ---------: | -------: | --------: | ---------------: | --------------: | ---------------------: | --------------------: |
+| AK10-9  |         21 |          9 |   60,000 |     0.160 |           31.9 A |          15.0 A |                53.0 Nm |               15.0 Nm |
+| AK40-10 |         14 |         10 |   60,000 |     0.056 |            7.3 A |           7.3 A |                 4.1 Nm |                4.0 Nm |
+| AK80-9  |         21 |          9 |   32,000 |     0.095 |           28.0 A |          15.0 A |                22.0 Nm |               12.5 Nm |
+| AKA60-6 |         14 |          6 |   50,000 |   0.11937 |           11.2 A |          11.2 A |                 9.0 Nm |                8.0 Nm |
 
-### Example: Changing Gear Ratio
+Hardware maxima are reference data, not default commands. An explicit override
+may replace a default cap but cannot exceed the corresponding hardware maximum.
+Commands also remain within the Servo wire limits: ±60 A q-axis current, 0–60 A
+brake current, ±100,000 ERPM in velocity mode, and ±36,000 motor-shaft degrees
+in position modes.
+
+---
+
+## Runtime fields
+
+| Field                             | Default       | Meaning                              |
+| --------------------------------- | ------------- | ------------------------------------ |
+| `can_channel`                     | `"can0"`      | Existing SocketCAN channel           |
+| `max_current_amps`                | model default | Symmetric q-axis current cap         |
+| `max_output_torque_newton_meters` | model default | Symmetric ideal output-torque cap    |
+| `max_driver_temperature_celsius`  | `70.0`        | Thermal guard threshold              |
+| `overtemperature_trip_count`      | `3`           | Consecutive hot samples before fault |
+| `cooldown_margin_celsius`         | `2.0`         | Hysteresis before the guard clears   |
+| `connection_timeout_seconds`      | `1.5`         | Context-entry fresh-status timeout   |
+| `telemetry_timeout_seconds`       | `0.1`         | Maximum telemetry age during update  |
+
+---
+
+## Custom motor
+
+Create a complete `MotorConfig`, then place it directly in `ServoConfig`:
 
 ```python
-# Override the Gear Ratio to 50:1
-my_config = {
-    "GEAR_RATIO": 50.0
-}
+from cubemars_servo_can import MotorConfig, ServoConfig
 
-with CubeMarsServoCAN(motor_type='AK80-9', config_overrides=my_config) as motor:
-    # Now motor.position will be calculated using 50.0 instead of 9.0
-    pass
+motor_data = MotorConfig(
+    model="CUSTOM-5",
+    pole_pairs=14,
+    gear_ratio=5.0,
+    max_velocity_erpm=20_000.0,
+    torque_constant_newton_meters_per_amp=0.1,
+    hardware_max_current_amps=12.0,
+    hardware_max_output_torque_newton_meters=6.0,
+    default_max_current_amps=5.0,
+    default_max_output_torque_newton_meters=2.5,
+)
+
+config = ServoConfig(
+    motor=motor_data,
+    motor_id=3,
+)
 ```
 
-### Example: Defining a Custom Motor
-
-If you are using a motor not in the default list, you can define it completely.
-**Note:** You must provide ALL fields.
-
-```python
-custom_motor_specs = {
-    "P_min": -12.5, "P_max": 12.5,
-    "V_min": -50.0, "V_max": 50.0,
-    # Current limits are in centi-amps for compatibility with TMotorCANControl.
-    # Example: +/-1500 means +/-15.0A command range.
-    "Curr_min": -1500.0, "Curr_max": 1500.0,
-    "T_min": -5.0, "T_max": 5.0,
-    "Kt_TMotor": 0.1,
-    "Current_Factor": 0.59,
-    "Kt_actual": 0.1,
-    "GEAR_RATIO": 1.0, # Direct Drive
-    "NUM_POLE_PAIRS": 14,
-    "Use_derived_torque_constants": False
-}
-
-# Pass None or 'Custom' as motor_type (it will just use your overrides)
-with CubeMarsServoCAN(motor_type='Custom', config_overrides=custom_motor_specs) as motor:
-    pass
-```
+All physical values and limits must be finite and positive. Conservative
+defaults must not exceed the declared hardware maxima.
 
 ---
-
-## Configuration Fields
-
-| Field            | Type    | Description                                                                |
-| ---------------- | ------- | -------------------------------------------------------------------------- |
-| `P_min/max`      | `float` | Position limits. (Original library uses int32 mapping ~32000 to ~3200 deg) |
-| `V_min/max`      | `float` | Velocity limits in Electrical RPM.                                         |
-| `Curr_min/max`   | `float` | Current limits in centi-amps (e.g. `1500` = `15.0A`).                      |
-| `T_min/max`      | `float` | Torque limits in Nm.                                                       |
-| `Kt_TMotor`      | `float` | Torque constant from spec sheet.                                           |
-| `Kt_actual`      | `float` | Calibrated torque constant.                                                |
-| `GEAR_RATIO`     | `float` | Reduction ratio.                                                           |
-| `NUM_POLE_PAIRS` | `int`   | Number of pole pairs.                                                      |
-
----
-
-## Runtime Safety Options
-
-These constructor parameters control fault behavior and shutdown behavior:
-
-| Parameter             | Type    | Default | Behavior                                                                |
-| --------------------- | ------- | ------- | ----------------------------------------------------------------------- |
-| `max_mosfet_temp`     | `float` | `70.0`  | Temperature threshold in `update()`.                                    |
-| `overtemp_trip_count` | `int`   | `3`     | Consecutive over-limit samples required before raising a thermal fault. |
-| `cooldown_margin_c`   | `float` | `2.0`   | Required cooldown margin before thermal guard clears.                   |
-
-Validation is strict:
-
-- `overtemp_trip_count` must be at least `1`.
-
-Context-manager shutdown policy:
-
-- `__exit__` / `close()` send `SET_CURRENT 0.0A` as the final shutdown command.
-
----
-
-## Notes
-
-- The public API uses radians, rad/s, A, and Nm.
-- Internally, some wire/config compatibility fields follow original TMotor scaling conventions.

@@ -1,851 +1,669 @@
-import can
+"""High-level, forward-only CubeMars Servo Mode controller."""
+
+import logging
 import math
+import threading
 import time
-import csv
-import traceback
-import warnings
 from types import TracebackType
-from typing import List, Optional, Dict, Any, TextIO
+from typing import Self
 
-from .constants import ERROR_CODES, DEFAULT_LOG_VARIABLES, ControlMode
-from .config import get_motor_config, MotorConfig
-from .motor_state import ServoMotorState, ServoCommand
-from .can_manager import CAN_Manager_servo
+from ._can_manager import CanManager, CanManagerRegistry
+from ._motor_state import ServoCommand, ServoTelemetry
+from ._protocol import (
+    CURRENT_LIMIT_AMPS,
+    MOTOR_POSITION_LIMIT_DEGREES,
+    PROFILE_VELOCITY_LIMIT_ERPM,
+    VELOCITY_LIMIT_ERPM,
+    CanFrame,
+    encode_current,
+    encode_current_brake,
+    encode_duty_cycle,
+    encode_origin,
+    encode_position,
+    encode_position_velocity,
+    encode_velocity,
+)
+from .config import ServoConfig
+from .constants import _FAULT_DESCRIPTIONS, ControlMode, OriginMode
+from .errors import ControlModeError, MotorConnectionError, MotorFaultError
+
+_LOGGER = logging.getLogger(__name__)
 
 
-class CubeMarsServoCAN:
-    """
-    The user-facing class that manages the motor. This class should be
-    used in the context of a with as block, in order to safely enter/exit
-    control of the motor.
-    """
+class CubeMarsServoCan:
+    """Control one CubeMars actuator running Servo Mode over CAN."""
 
-    def __init__(
-        self,
-        motor_type: str = "AK80-9",
-        motor_ID: int = 1,
-        max_mosfet_temp: float = 70.0,
-        overtemp_trip_count: int = 3,
-        cooldown_margin_c: float = 2.0,
-        CSV_file: Optional[str] = None,
-        log_vars: Optional[List[str]] = None,
-        can_channel: str = "can0",
-        config_overrides: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        """
-        Sets up the motor manager. Note the device will not be powered on by this method! You must
-        call __enter__, mostly commonly by using a with block, before attempting to control the motor.
-
-        Args:
-            motor_type: The type of motor being controlled, ie AK80-9.
-            motor_ID: The CAN ID of the motor.
-            max_mosfet_temp: temperature of the mosfet above which to throw an error, in Celsius
-            overtemp_trip_count: consecutive over-temperature samples required before raising.
-            cooldown_margin_c: cooldown hysteresis used to clear pre-trip thermal guard.
-            CSV_file: A CSV file to output log info to. If None, no log will be recorded.
-            log_vars: The variables to log as a python list.
-            can_channel: The CAN channel to use (default "can0")
-            config_overrides: Optional dictionary to override specific motor parameters.
-        """
-        if overtemp_trip_count < 1:
-            raise ValueError("overtemp_trip_count must be >= 1")
-        if cooldown_margin_c < 0:
-            raise ValueError("cooldown_margin_c must be >= 0")
-
-        self.type = motor_type
-        self.ID = motor_ID
-        self.csv_file_name = CSV_file
-        self.max_temp = max_mosfet_temp
-        self.overtemp_trip_count = int(overtemp_trip_count)
-        self.cooldown_margin_c = float(cooldown_margin_c)
-
-        # Load Configuration
-        self.config: MotorConfig = get_motor_config(motor_type, config_overrides)
-
-        print(f"Initializing device: {self.device_info_string()}")
-
-        self._motor_state = ServoMotorState(0.0, 0.0, 0.0, 0.0, 0, 0.0)
-        self._motor_state_async = ServoMotorState(0.0, 0.0, 0.0, 0.0, 0, 0.0)
-        self._command = ServoCommand(0.0, 0.0, 0.0, 0.0, 0.0)
-        self._control_state = ControlMode.IDLE
-
-        # Servo telemetry/commands report electrical RPM. Convert to output-side rad/s
-        # using the configured pole-pair count and gearbox ratio for this motor.
-        self.radps_per_ERPM: float = (
-            2.0
-            * math.pi
-            / (60.0 * float(self.config.NUM_POLE_PAIRS) * float(self.config.GEAR_RATIO))
-        )
-        self.rad_per_Eang: float = math.pi / self.config.NUM_POLE_PAIRS
-
+    def __init__(self, config: ServoConfig) -> None:
+        """Create a controller without opening a CAN interface or file."""
+        if not isinstance(config, ServoConfig):
+            raise TypeError("config must be a ServoConfig")
+        self.config = config
+        self.motor_config = config.motor_config
+        self._lock = threading.RLock()
+        self._status_event = threading.Event()
+        self._telemetry = ServoTelemetry()
+        self._command = ServoCommand()
+        self._control_mode = ControlMode.IDLE
+        self._listener_error: Exception | None = None
+        self._pending_fault_code: int | None = None
+        self._manager: CanManager | None = None
         self._entered = False
-        self._powered_on = False
-        self._start_time = time.time()
-        self._last_update_time = self._start_time
-        self._last_command_time: Optional[float] = None
-        self._updated = False
-        self._command_sent = False
-        self._async_error: Optional[RuntimeError] = None
-        self._overtemp_samples = 0
+        self._overtemperature_samples = 0
         self._thermal_guard_active = False
 
-        self.log_vars = list(DEFAULT_LOG_VARIABLES if log_vars is None else log_vars)
-        self.LOG_FUNCTIONS = {
-            "motor_position": self.get_motor_angle_radians,
-            "motor_speed": self.get_motor_velocity_radians_per_second,
-            "motor_current": self.get_current_qaxis_amps,
-            "motor_temperature": self.get_temperature_celsius,
-        }
-
-        self._canman = CAN_Manager_servo(channel=can_channel)
-        self._canman.add_motor(self)
-        self.csv_file: Optional[TextIO] = None
-
-    def __enter__(self) -> "CubeMarsServoCAN":
-        """
-        Used to safely power the motor on and begin the log file.
-        """
-        print(f"Turning on control for device: {self.device_info_string()}")
-        powered_on = False
+    def __enter__(self) -> Self:
+        """Acquire CAN resources, register the motor, and verify fresh telemetry."""
+        if self._entered:
+            raise RuntimeError("the servo context is already entered")
+        self._reset_session_state()
+        manager: CanManager | None = None
         try:
-            if self.csv_file_name is not None:
-                with open(self.csv_file_name, "w") as fd:
-                    writer = csv.writer(fd)
-                    writer.writerow(["pi_time"] + self.log_vars)
-                self.csv_file = open(self.csv_file_name, "a")
-                self.csv_writer = csv.writer(self.csv_file)
-
-            self.power_on()
-            powered_on = True
-            self._send_command()
+            manager = CanManagerRegistry.acquire_registered(
+                channel=self.config.can_channel,
+                motor_id=self.config.motor_id,
+                sink=self,
+            )
+            self._manager = manager
             self._entered = True
-            if not self.check_can_connection():
-                raise RuntimeError(f"Device not connected: {self.device_info_string()}")
-            return self
+            if not self.check_connection():
+                raise MotorConnectionError(
+                    f"Motor {self.config.motor_id} did not return fresh "
+                    "Servo status telemetry."
+                )
+            fault_code = self._consume_pending_fault()
+            if fault_code is not None:
+                raise self._motor_fault(fault_code)
         except Exception:
-            # Best-effort rollback to avoid leaving the motor powered when entry fails.
-            if powered_on:
-                try:
-                    self.power_off()
-                except Exception:
-                    pass
             self._entered = False
-            if self.csv_file is not None:
-                self.csv_file.close()
-                self.csv_file = None
+            if manager is not None:
+                self._try_send_zero_current(manager)
+                manager.unregister(motor_id=self.config.motor_id)
+                CanManagerRegistry.release(manager=manager)
+            self._manager = None
+            self._clear_pending_events()
             raise
+        _LOGGER.info(
+            "Connected to %s (ID %d)",
+            self.motor_config.model,
+            self.config.motor_id,
+        )
+        return self
 
     def __exit__(
         self,
-        etype: type[BaseException] | None,
-        value: BaseException | None,
-        tb: TracebackType | None,
+        _exception_type: type[BaseException] | None,
+        _exception: BaseException | None,
+        _traceback: TracebackType | None,
     ) -> None:
-        """
-        Used to safely stop the motor and close the log file.
-        """
+        """Close this controller without suppressing a context exception."""
         self.close()
 
-        if etype is not None:
-            traceback.print_exception(etype, value, tb)
-
-    def close(self) -> None:
-        """
-        Close motor control explicitly.
-        Safe to call multiple times.
-        """
-        if not (self._entered or self._powered_on or self.csv_file is not None):
-            return
-
-        print(f"Turning off control for device: {self.device_info_string()}")
-        try:
-            self._send_shutdown_command()
-        finally:
-            self._entered = False
-            self._async_error = None
-            self._overtemp_samples = 0
-            self._thermal_guard_active = False
-            if self.csv_file is not None:
-                self.csv_file.close()
-                self.csv_file = None
-
-    def _send_shutdown_command(self) -> None:
-        """
-        Apply final shutdown command.
-        The library uses a fixed zero-current shutdown command.
-        """
-        try:
-            self._canman.comm_can_set_current(self.ID, 0.0)
-        except Exception as exc:
-            warnings.warn(
-                f"Zero-current shutdown command failed for {self.device_info_string()}: {exc}",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-
-    def detach_listener(self) -> None:
-        """
-        Remove this motor's listener from the shared CAN notifier.
-        """
-        self._canman.remove_motor(self)
-
-    def close_shared_can_manager(self) -> None:
-        """
-        Close the shared CAN manager and underlying bus.
-        This affects all motors attached to the same CAN manager singleton.
-        """
-        self._canman.close()
-
-    def qaxis_current_to_TMotor_current(self, iq: float) -> float:
-        """
-        Convert Q-axis current to T-Motor current.
-        """
+    def __str__(self) -> str:
+        """Return a compact representation of synchronized motor state."""
         return (
-            iq
-            * (self.config.GEAR_RATIO * self.config.Kt_TMotor)
-            / self.config.Current_Factor
+            f"{self.motor_config.model} (ID {self.config.motor_id}) | "
+            f"position={self.output_position_radians:.3f} rad | "
+            f"velocity={self.output_velocity_radians_per_second:.3f} rad/s | "
+            f"current={self.q_axis_current_amps:.3f} A | "
+            f"temperature={self.temperature_celsius:.1f} C"
         )
 
-    def _update_state_async(self, servo_state: ServoMotorState) -> None:
-        """
-        This method is called by the handler every time a message is recieved on the bus
-        from this motor, to store the most recent state information for later.
+    @property
+    def control_mode(self) -> ControlMode:
+        """Return the currently selected command mode."""
+        return self._control_mode
 
-        Args:
-            servo_state: the servo_state object with the updated motor state
+    @property
+    def is_connected(self) -> bool:
+        """Return whether this instance owns an active CAN registration."""
+        return self._entered and self._manager is not None
 
-        Raises:
-            RuntimeError when device sends back an error code that is not 0 (0 meaning no error)
-        """
-        if servo_state.error != 0:
-            error_msg = ERROR_CODES.get(servo_state.error, "Unknown Error")
-            self._async_error = RuntimeError(
-                f"Driver board error for device: {self.device_info_string()}: {error_msg}"
+    @property
+    def temperature_celsius(self) -> float:
+        """Return the most recently synchronized driver temperature."""
+        return self._telemetry.temperature_celsius
+
+    @property
+    def fault_code(self) -> int:
+        """Return the most recently synchronized driver fault code."""
+        return self._telemetry.fault_code
+
+    @property
+    def q_axis_current_amps(self) -> float:
+        """Return the most recently synchronized q-axis current."""
+        return self._telemetry.q_axis_current_amps
+
+    @property
+    def output_position_radians(self) -> float:
+        """Return gearbox-output position in radians."""
+        return self._telemetry.motor_position_degrees * self._output_radians_per_degree
+
+    @property
+    def output_velocity_radians_per_second(self) -> float:
+        """Return gearbox-output velocity in radians per second."""
+        return self._telemetry.velocity_erpm * self._output_radians_per_second_per_erpm
+
+    @property
+    def output_acceleration_radians_per_second_squared(self) -> float:
+        """Return gearbox-output acceleration in radians per second squared."""
+        return (
+            self._telemetry.acceleration_erpm_per_second
+            * self._output_radians_per_second_per_erpm
+        )
+
+    @property
+    def output_torque_newton_meters(self) -> float:
+        """Estimate ideal output torque from current, Kt, and gear ratio."""
+        return (
+            self.q_axis_current_amps
+            * self.motor_config.torque_constant_newton_meters_per_amp
+            * self.motor_config.gear_ratio
+        )
+
+    @property
+    def motor_position_radians(self) -> float:
+        """Return motor-shaft position in radians."""
+        return self.output_position_radians * self.motor_config.gear_ratio
+
+    @property
+    def motor_velocity_radians_per_second(self) -> float:
+        """Return motor-shaft velocity in radians per second."""
+        return self.output_velocity_radians_per_second * self.motor_config.gear_ratio
+
+    @property
+    def motor_acceleration_radians_per_second_squared(self) -> float:
+        """Return motor-shaft acceleration in radians per second squared."""
+        return (
+            self.output_acceleration_radians_per_second_squared
+            * self.motor_config.gear_ratio
+        )
+
+    @property
+    def motor_torque_newton_meters(self) -> float:
+        """Estimate ideal motor-shaft torque from reported current and Kt."""
+        return (
+            self.q_axis_current_amps
+            * self.motor_config.torque_constant_newton_meters_per_amp
+        )
+
+    @property
+    def _output_radians_per_degree(self) -> float:
+        """Return the motor-degree to output-radian conversion."""
+        return math.pi / (180.0 * self.motor_config.gear_ratio)
+
+    @property
+    def _output_radians_per_second_per_erpm(self) -> float:
+        """Return the ERPM to output-radians-per-second conversion."""
+        return (
+            2.0
+            * math.pi
+            / (60.0 * self.motor_config.pole_pairs * self.motor_config.gear_ratio)
+        )
+
+    def set_control_mode(self, mode: ControlMode) -> None:
+        """Select how the staged command is encoded by the next update."""
+        if not isinstance(mode, ControlMode):
+            raise TypeError("mode must be a ControlMode")
+        self._control_mode = mode
+
+    def set_origin(self, mode: OriginMode) -> None:
+        """Apply an explicit temporary or persistent origin operation."""
+        self._require_entered()
+        if not isinstance(mode, OriginMode):
+            raise TypeError("mode must be an OriginMode")
+        self._send_frame(
+            encode_origin(motor_id=self.config.motor_id, mode=mode),
+        )
+
+    def set_duty_cycle(self, duty_cycle: float) -> None:
+        """Stage normalized duty cycle in the inclusive range [-1, 1]."""
+        self._require_mode(ControlMode.DUTY_CYCLE)
+        self._check_range(
+            value=duty_cycle,
+            minimum=-1.0,
+            maximum=1.0,
+            label="Duty cycle",
+            unit="",
+        )
+        self._command.duty_cycle = duty_cycle
+
+    def set_q_axis_current_amps(self, current_amps: float) -> None:
+        """Stage q-axis or braking current in amperes."""
+        if self._control_mode not in {
+            ControlMode.Q_AXIS_CURRENT,
+            ControlMode.CURRENT_BRAKE,
+        }:
+            raise ControlModeError(
+                "current commands require q-axis-current or current-brake mode"
             )
-            self._updated = True
-            return
-
-        now = time.time()
-        dt = now - self._last_update_time
-        self._last_update_time = now
-
-        # Calculate acceleration before updating state
-        if abs(dt) > 1e-9:
-            acceleration = (
-                servo_state.velocity - self._motor_state_async.velocity
-            ) / dt
-        else:
-            acceleration = 0.0
-
-        self._motor_state_async.set_state_obj(servo_state)
-        # Preserve the calculated acceleration (don't overwrite with state object value)
-        self._motor_state_async.acceleration = acceleration
-        self._updated = True
-
-    def _set_listener_error(self, exc: Exception) -> None:
-        """
-        Store listener-thread errors to be raised on the next user-thread update() call.
-        """
-        self._async_error = RuntimeError(
-            f"CAN listener error for device: {self.device_info_string()}: {exc}"
+        maximum = min(self.config.current_limit_amps, CURRENT_LIMIT_AMPS)
+        minimum = -maximum
+        if self._control_mode is ControlMode.CURRENT_BRAKE:
+            minimum = 0.0
+        self._check_range(
+            value=current_amps,
+            minimum=minimum,
+            maximum=maximum,
+            label="Current",
+            unit="A",
         )
-        self._updated = True
+        self._command.q_axis_current_amps = current_amps
+
+    def set_output_position(
+        self,
+        position_radians: float,
+        *,
+        velocity_radians_per_second: float = 0.0,
+        acceleration_radians_per_second_squared: float = 0.0,
+    ) -> None:
+        """Stage an output position and optional profile in SI units."""
+        if self._control_mode not in {
+            ControlMode.POSITION,
+            ControlMode.POSITION_VELOCITY,
+        }:
+            raise ControlModeError(
+                "position commands require position or position-velocity mode"
+            )
+        if isinstance(position_radians, bool):
+            raise TypeError("position must be a number")
+        if not math.isfinite(position_radians):
+            raise ValueError("position must be finite")
+        motor_degrees = position_radians / self._output_radians_per_degree
+        self._check_range(
+            value=motor_degrees,
+            minimum=-MOTOR_POSITION_LIMIT_DEGREES,
+            maximum=MOTOR_POSITION_LIMIT_DEGREES,
+            label="Motor position",
+            unit="degrees",
+        )
+        velocity_erpm = self._command.velocity_erpm
+        acceleration_erpm_per_second = self._command.acceleration_erpm_per_second
+        if self._control_mode is ControlMode.POSITION_VELOCITY:
+            velocity_erpm = self._output_velocity_to_erpm(
+                velocity_radians_per_second,
+                protocol_limit_erpm=PROFILE_VELOCITY_LIMIT_ERPM,
+            )
+            if isinstance(acceleration_radians_per_second_squared, bool):
+                raise TypeError("profile acceleration must be a number")
+            if not math.isfinite(acceleration_radians_per_second_squared):
+                raise ValueError("profile acceleration must be finite")
+            acceleration_erpm_per_second = (
+                acceleration_radians_per_second_squared
+                / self._output_radians_per_second_per_erpm
+            )
+            encode_position_velocity(
+                motor_id=self.config.motor_id,
+                motor_position_degrees=motor_degrees,
+                velocity_erpm=velocity_erpm,
+                acceleration_erpm_per_second=acceleration_erpm_per_second,
+            )
+        else:
+            if (
+                velocity_radians_per_second != 0.0
+                or acceleration_radians_per_second_squared != 0.0
+            ):
+                raise ControlModeError(
+                    "profile velocity and acceleration require position-velocity mode"
+                )
+            encode_position(
+                motor_id=self.config.motor_id,
+                motor_position_degrees=motor_degrees,
+            )
+        self._command.motor_position_degrees = motor_degrees
+        self._command.velocity_erpm = velocity_erpm
+        self._command.acceleration_erpm_per_second = acceleration_erpm_per_second
+
+    def set_output_velocity(self, velocity_radians_per_second: float) -> None:
+        """Stage gearbox-output velocity in radians per second."""
+        self._require_mode(ControlMode.VELOCITY)
+        self._command.velocity_erpm = self._output_velocity_to_erpm(
+            velocity_radians_per_second,
+            protocol_limit_erpm=VELOCITY_LIMIT_ERPM,
+        )
+
+    def set_output_torque(self, torque_newton_meters: float) -> None:
+        """Stage ideal output torque by converting it to q-axis current."""
+        limit = self.config.output_torque_limit_newton_meters
+        self._check_range(
+            value=torque_newton_meters,
+            minimum=-limit,
+            maximum=limit,
+            label="Output torque",
+            unit="Nm",
+        )
+        current_amps = torque_newton_meters / (
+            self.motor_config.torque_constant_newton_meters_per_amp
+            * self.motor_config.gear_ratio
+        )
+        self.set_q_axis_current_amps(current_amps)
+
+    def set_motor_position(
+        self,
+        position_radians: float,
+        *,
+        velocity_radians_per_second: float = 0.0,
+        acceleration_radians_per_second_squared: float = 0.0,
+    ) -> None:
+        """Stage motor-shaft position and optional motor-shaft profile."""
+        self._reject_boolean(value=position_radians, label="motor position")
+        self._reject_boolean(
+            value=velocity_radians_per_second,
+            label="motor velocity",
+        )
+        self._reject_boolean(
+            value=acceleration_radians_per_second_squared,
+            label="motor acceleration",
+        )
+        self.set_output_position(
+            position_radians / self.motor_config.gear_ratio,
+            velocity_radians_per_second=(
+                velocity_radians_per_second / self.motor_config.gear_ratio
+            ),
+            acceleration_radians_per_second_squared=(
+                acceleration_radians_per_second_squared / self.motor_config.gear_ratio
+            ),
+        )
+
+    def set_motor_velocity(self, velocity_radians_per_second: float) -> None:
+        """Stage motor-shaft velocity in radians per second."""
+        self._reject_boolean(
+            value=velocity_radians_per_second,
+            label="motor velocity",
+        )
+        self.set_output_velocity(
+            velocity_radians_per_second / self.motor_config.gear_ratio
+        )
+
+    def set_motor_torque(self, torque_newton_meters: float) -> None:
+        """Stage ideal motor-shaft torque in newton-metres."""
+        self._reject_boolean(
+            value=torque_newton_meters,
+            label="motor torque",
+        )
+        self.set_output_torque(torque_newton_meters * self.motor_config.gear_ratio)
+
+    def check_connection(self) -> bool:
+        """Send zero current and wait for a fresh Servo feedback frame."""
+        self._require_entered()
+        self._status_event.clear()
+        self._send_frame(
+            encode_current(motor_id=self.config.motor_id, current_amps=0.0),
+        )
+        return self._status_event.wait(self.config.connection_timeout_seconds)
 
     def update(self) -> None:
-        """
-        This method is called by the user to synchronize the current state used by the controller/logger
-        with the most recent message recieved, as well as to send the current command.
-        """
-        if not self._entered:
-            raise RuntimeError(
-                f"Tried to update motor state before safely powering on for device: {self.device_info_string()}"
+        """Enforce safety and send the selected command using fresh telemetry."""
+        self._require_entered()
+        with self._lock:
+            listener_error = self._listener_error
+            self._listener_error = None
+            telemetry = self._telemetry
+        if listener_error is not None:
+            self._try_send_zero_current()
+            raise MotorConnectionError("failed to decode Servo telemetry") from (
+                listener_error
             )
+        fault_code = self._consume_pending_fault()
+        if fault_code is not None:
+            self._try_send_zero_current()
+            raise self._motor_fault(fault_code)
+        telemetry_age = time.monotonic() - telemetry.received_at_seconds
+        if telemetry_age > self.config.telemetry_timeout_seconds:
+            self._try_send_zero_current()
+            raise MotorConnectionError(
+                f"Motor {self.config.motor_id} telemetry is stale by "
+                f"{telemetry_age:.3f} seconds."
+            )
+        if self._update_thermal_guard(telemetry.temperature_celsius):
+            self._try_send_zero_current()
+            raise MotorFaultError(
+                motor_id=self.config.motor_id,
+                fault_code=1,
+                description=(
+                    "temperature exceeded "
+                    f"{self.config.max_driver_temperature_celsius:g} C for "
+                    f"{self._overtemperature_samples} samples"
+                ),
+            )
+        if self._thermal_guard_active:
+            self._send_safe_command(telemetry)
+        else:
+            self._send_selected_command()
 
-        if self._async_error is not None:
-            async_error = self._async_error
-            self._async_error = None
-            raise async_error
+    def close(self) -> None:
+        """Send zero current and release resources; repeated calls are safe."""
+        manager = self._manager
+        if manager is None:
+            return
+        self._try_send_zero_current(manager)
+        self._entered = False
+        manager.unregister(motor_id=self.config.motor_id)
+        CanManagerRegistry.release(manager=manager)
+        self._manager = None
+        self._overtemperature_samples = 0
+        self._thermal_guard_active = False
+        self._clear_pending_events()
 
-        # First consume the latest listener-thread state so safety checks evaluate
-        # current telemetry rather than stale values from a previous cycle.
-        self._motor_state.set_state_obj(self._motor_state_async)
-        # Apply Gear Ratio to position
-        self._motor_state.position = self._motor_state.position / self.config.GEAR_RATIO
+    def _accept_telemetry(self, telemetry: ServoTelemetry) -> None:
+        """Store a sample and derive acceleration on the notifier thread."""
+        with self._lock:
+            elapsed = (
+                telemetry.received_at_seconds - self._telemetry.received_at_seconds
+            )
+            acceleration = 0.0
+            if self._telemetry.received_at_seconds > 0.0 and elapsed > 0.0:
+                acceleration = (
+                    telemetry.velocity_erpm - self._telemetry.velocity_erpm
+                ) / elapsed
+            self._telemetry = ServoTelemetry(
+                motor_position_degrees=telemetry.motor_position_degrees,
+                velocity_erpm=telemetry.velocity_erpm,
+                q_axis_current_amps=telemetry.q_axis_current_amps,
+                temperature_celsius=telemetry.temperature_celsius,
+                fault_code=telemetry.fault_code,
+                received_at_seconds=telemetry.received_at_seconds,
+                acceleration_erpm_per_second=acceleration,
+            )
+            if telemetry.fault_code != 0 and self._pending_fault_code is None:
+                self._pending_fault_code = telemetry.fault_code
+            self._status_event.set()
 
-        current_temp = self.get_temperature_celsius()
-        if current_temp > self.max_temp:
-            self._overtemp_samples += 1
+    def _accept_listener_error(self, error: Exception) -> None:
+        """Store a listener-thread failure for the next control-thread update."""
+        with self._lock:
+            self._listener_error = error
+
+    def _send_selected_command(self) -> None:
+        """Encode and send the command selected by the active mode."""
+        if self._control_mode is ControlMode.IDLE:
+            frame = encode_current(
+                motor_id=self.config.motor_id,
+                current_amps=0.0,
+            )
+        elif self._control_mode is ControlMode.DUTY_CYCLE:
+            frame = encode_duty_cycle(
+                motor_id=self.config.motor_id,
+                duty_cycle=self._command.duty_cycle,
+            )
+        elif self._control_mode is ControlMode.Q_AXIS_CURRENT:
+            frame = encode_current(
+                motor_id=self.config.motor_id,
+                current_amps=self._command.q_axis_current_amps,
+            )
+        elif self._control_mode is ControlMode.CURRENT_BRAKE:
+            frame = encode_current_brake(
+                motor_id=self.config.motor_id,
+                current_amps=self._command.q_axis_current_amps,
+            )
+        elif self._control_mode is ControlMode.VELOCITY:
+            frame = encode_velocity(
+                motor_id=self.config.motor_id,
+                velocity_erpm=self._command.velocity_erpm,
+            )
+        elif self._control_mode is ControlMode.POSITION:
+            frame = encode_position(
+                motor_id=self.config.motor_id,
+                motor_position_degrees=self._command.motor_position_degrees,
+            )
+        elif self._control_mode is ControlMode.POSITION_VELOCITY:
+            frame = encode_position_velocity(
+                motor_id=self.config.motor_id,
+                motor_position_degrees=self._command.motor_position_degrees,
+                velocity_erpm=self._command.velocity_erpm,
+                acceleration_erpm_per_second=(
+                    self._command.acceleration_erpm_per_second
+                ),
+            )
+        else:
+            raise ControlModeError(f"unsupported control mode: {self._control_mode!r}")
+        self._send_frame(frame)
+
+    def _send_safe_command(self, telemetry: ServoTelemetry) -> None:
+        """Hold position modes and zero current for all other thermal guards."""
+        if self._control_mode is ControlMode.POSITION:
+            frame = encode_position(
+                motor_id=self.config.motor_id,
+                motor_position_degrees=telemetry.motor_position_degrees,
+            )
+        elif self._control_mode is ControlMode.POSITION_VELOCITY:
+            frame = encode_position_velocity(
+                motor_id=self.config.motor_id,
+                motor_position_degrees=telemetry.motor_position_degrees,
+                velocity_erpm=0.0,
+                acceleration_erpm_per_second=0.0,
+            )
+        else:
+            frame = encode_current(
+                motor_id=self.config.motor_id,
+                current_amps=0.0,
+            )
+        self._send_frame(frame)
+
+    def _update_thermal_guard(self, temperature_celsius: float) -> bool:
+        """Update debounce and hysteresis state, returning whether it tripped."""
+        limit = self.config.max_driver_temperature_celsius
+        if temperature_celsius > limit:
+            self._overtemperature_samples += 1
             self._thermal_guard_active = True
         else:
-            self._overtemp_samples = 0
-            if current_temp <= (self.max_temp - self.cooldown_margin_c):
+            self._overtemperature_samples = 0
+            if temperature_celsius <= limit - self.config.cooldown_margin_celsius:
                 self._thermal_guard_active = False
+        return self._overtemperature_samples >= self.config.overtemperature_trip_count
 
-        if self._overtemp_samples >= self.overtemp_trip_count:
-            raise RuntimeError(
-                f"Temperature greater than {self.max_temp}C for device: {self.device_info_string()}"
+    def _output_velocity_to_erpm(
+        self,
+        velocity_radians_per_second: float,
+        *,
+        protocol_limit_erpm: float,
+    ) -> float:
+        """Convert and validate an output velocity command."""
+        if isinstance(velocity_radians_per_second, bool):
+            raise TypeError("velocity must be a number")
+        erpm = velocity_radians_per_second / (self._output_radians_per_second_per_erpm)
+        maximum = min(self.motor_config.max_velocity_erpm, protocol_limit_erpm)
+        tolerance = 1e-6
+        if not math.isfinite(erpm):
+            raise ValueError("velocity must be finite")
+        if erpm < -maximum - tolerance or erpm > maximum + tolerance:
+            raise ValueError(
+                f"Velocity {erpm:g} ERPM is outside [{-maximum:g}, {maximum:g}] ERPM"
             )
+        return min(max(erpm, -maximum), maximum)
 
-        now = time.time()
-        if (self._last_command_time and (now - self._last_command_time) < 0.25) and (
-            (now - self._last_update_time) > 0.1
-        ):
-            warnings.warn(
-                f"State update requested but no data from motor. Delay longer after zeroing, decrease frequency, or check connection. {self.device_info_string()}",
-                RuntimeWarning,
-            )
-        else:
-            self._command_sent = False
+    def _send_frame(self, frame: CanFrame) -> None:
+        """Send an encoded frame through the acquired channel manager."""
+        manager = self._manager
+        if manager is None:
+            raise RuntimeError("the servo context has not been entered")
+        manager.send(frame)
 
-        if self._thermal_guard_active:
-            self._send_thermal_guard_command()
-        else:
-            self._send_command()
-
-        if self.csv_file is not None:
-            self.csv_writer.writerow(
-                [self._last_update_time - self._start_time]
-                + [self.LOG_FUNCTIONS[var]() for var in self.log_vars]
-            )
-
-        self._updated = False
-
-    def _send_thermal_guard_command(self) -> None:
-        """
-        Emit a non-motion command while pre-trip thermal guard is active.
-        """
-        previous_position = self._command.position
-        previous_velocity = self._command.velocity
-        previous_current = self._command.current
-        previous_duty = self._command.duty
-        previous_acceleration = self._command.acceleration
-
-        hold_position = self._motor_state_async.position
-        if self._last_update_time <= self._start_time:
-            hold_position = previous_position
-
+    def _try_send_zero_current(self, manager: CanManager | None = None) -> None:
+        """Attempt a safe zero-current command without masking a primary error."""
+        active_manager = manager if manager is not None else self._manager
+        if active_manager is None:
+            return
         try:
-            if self._control_state == ControlMode.DUTY_CYCLE:
-                self._command.duty = 0.0
-            elif self._control_state in (
-                ControlMode.CURRENT_LOOP,
-                ControlMode.CURRENT_BRAKE,
-            ):
-                self._command.current = 0.0
-            elif self._control_state == ControlMode.VELOCITY:
-                self._command.velocity = 0.0
-            elif self._control_state == ControlMode.POSITION:
-                self._command.position = hold_position
-            elif self._control_state == ControlMode.POSITION_VELOCITY:
-                self._command.position = hold_position
-                self._command.velocity = 0.0
-                self._command.acceleration = 0.0
-            self._send_command()
-        finally:
-            self._command.position = previous_position
-            self._command.velocity = previous_velocity
-            self._command.current = previous_current
-            self._command.duty = previous_duty
-            self._command.acceleration = previous_acceleration
-
-    def _send_command(self) -> None:
-        """
-        Sends a command to the motor depending on what control mode the motor is in. This method
-        is called by update(), and should only be called on its own if you don't want to update the motor state info.
-        """
-        if self._control_state == ControlMode.DUTY_CYCLE:
-            self._canman.comm_can_set_duty(self.ID, self._command.duty)
-        elif self._control_state == ControlMode.CURRENT_LOOP:
-            self._canman.comm_can_set_current(self.ID, self._command.current)
-        elif self._control_state == ControlMode.CURRENT_BRAKE:
-            self._canman.comm_can_set_cb(self.ID, self._command.current)
-        elif self._control_state == ControlMode.VELOCITY:
-            self._canman.comm_can_set_rpm(self.ID, self._command.velocity)
-        elif self._control_state == ControlMode.POSITION:
-            self._canman.comm_can_set_pos(self.ID, self._command.position)
-        elif self._control_state == ControlMode.POSITION_VELOCITY:
-            self._canman.comm_can_set_pos_spd(
-                self.ID,
-                self._command.position,
-                self._command.velocity,
-                self._command.acceleration,
+            active_manager.send(
+                encode_current(
+                    motor_id=self.config.motor_id,
+                    current_amps=0.0,
+                )
             )
-        elif self._control_state == ControlMode.IDLE:
-            self._canman.comm_can_set_duty(self.ID, 0.0)
-        else:
-            raise RuntimeError(
-                f"UNDEFINED STATE for device {self.device_info_string()}"
+        except Exception:
+            _LOGGER.exception(
+                "Failed to send zero-current command to motor %d",
+                self.config.motor_id,
             )
 
-        self._last_command_time = time.time()
+    def _reset_session_state(self) -> None:
+        """Discard state that must not cross context-manager sessions."""
+        with self._lock:
+            self._telemetry = ServoTelemetry()
+            self._listener_error = None
+            self._pending_fault_code = None
+        self._status_event.clear()
+        self._overtemperature_samples = 0
+        self._thermal_guard_active = False
 
-    def power_on(self) -> None:
-        """Powers on the motor."""
-        self._canman.power_on(self.ID)
-        self._powered_on = True
-        self._updated = True
+    def _clear_pending_events(self) -> None:
+        """Clear listener events consumed by session cleanup."""
+        with self._lock:
+            self._listener_error = None
+            self._pending_fault_code = None
+        self._status_event.clear()
 
-    def power_off(self) -> None:
-        """Powers off the motor."""
-        self._canman.power_off(self.ID)
-        self._powered_on = False
+    def _consume_pending_fault(self) -> int | None:
+        """Return and clear the oldest pending driver fault."""
+        with self._lock:
+            fault_code = self._pending_fault_code
+            self._pending_fault_code = None
+        return fault_code
 
-    def set_zero_position(self) -> None:
-        """Zeros the position"""
-        self._canman.comm_can_set_origin(self.ID, 1)
-        self._last_command_time = time.time()
-
-    # --- Getters ---
-
-    def get_temperature_celsius(self) -> float:
-        """
-        Returns:
-            The most recently updated motor temperature in degrees C.
-        """
-        return self._motor_state.temperature
-
-    def get_motor_error_code(self) -> int:
-        """
-        Returns:
-            The most recently updated motor error code.
-            Note the program should throw a runtime error before you get a chance to read
-            this value if it is ever anything besides 0.
-        """
-        return self._motor_state.error
-
-    def get_current_qaxis_amps(self) -> float:
-        """
-        Returns:
-            The most recently updated qaxis current in amps
-        """
-        return self._motor_state.current
-
-    def get_output_angle_radians(self) -> float:
-        """
-        Returns:
-            The most recently updated output angle in radians
-        """
-        return self._motor_state.position * self.rad_per_Eang
-
-    def get_output_velocity_radians_per_second(self) -> float:
-        """
-        Returns:
-            The most recently updated output velocity in radians per second
-        """
-        return self._motor_state.velocity * self.radps_per_ERPM
-
-    def get_output_acceleration_radians_per_second_squared(self) -> float:
-        """
-        Returns:
-            The most recently updated output acceleration in radians per second per second
-        """
-        return self._motor_state.acceleration * self.radps_per_ERPM
-
-    def get_output_torque_newton_meters(self) -> float:
-        """
-        Returns:
-            the most recently updated output torque in Nm
-        """
-        return (
-            self.get_current_qaxis_amps()
-            * self.config.Kt_actual
-            * self.config.GEAR_RATIO
+    def _motor_fault(self, fault_code: int) -> MotorFaultError:
+        """Build a structured exception for a driver-reported fault."""
+        return MotorFaultError(
+            motor_id=self.config.motor_id,
+            fault_code=fault_code,
+            description=_FAULT_DESCRIPTIONS.get(
+                fault_code,
+                "unknown driver fault",
+            ),
         )
 
-    # --- Mode Setters ---
+    def _require_entered(self) -> None:
+        """Reject operations that require an acquired CAN manager."""
+        if not self._entered or self._manager is None:
+            raise RuntimeError("enter the servo context before using this operation")
 
-    def enter_duty_cycle_control(self) -> None:
-        """
-        Must call this to enable sending duty cycle commands.
-        """
-        self._control_state = ControlMode.DUTY_CYCLE
+    def _require_mode(self, expected: ControlMode) -> None:
+        """Reject a command incompatible with the active mode."""
+        if self._control_mode is not expected:
+            raise ControlModeError(f"command requires {expected.value} mode")
 
-    def enter_current_control(self) -> None:
-        """
-        Must call this to enable sending current commands.
-        """
-        self._control_state = ControlMode.CURRENT_LOOP
+    @staticmethod
+    def _reject_boolean(*, value: float, label: str) -> None:
+        """Reject booleans before unit conversion turns them into numbers."""
+        if isinstance(value, bool):
+            raise TypeError(f"{label} must be a number")
 
-    def enter_current_brake_control(self) -> None:
-        """
-        Must call this to enable sending current brake commands.
-        """
-        self._control_state = ControlMode.CURRENT_BRAKE
-
-    def enter_velocity_control(self) -> None:
-        """
-        Must call this to enable sending velocity commands.
-        """
-        self._control_state = ControlMode.VELOCITY
-
-    def enter_position_control(self) -> None:
-        """
-        Must call this to enable position commands.
-        """
-        self._control_state = ControlMode.POSITION
-
-    def enter_position_velocity_control(self) -> None:
-        """
-        Must call this to enable sending position commands with specified velocity and accleration limits.
-        """
-        self._control_state = ControlMode.POSITION_VELOCITY
-
-    def enter_idle_mode(self) -> None:
-        """
-        Enter the idle state, where duty cycle is set to 0. (This is the default state.)
-        """
-        self._control_state = ControlMode.IDLE
-
-    # --- Command Setters ---
-
-    def set_output_angle_radians(
-        self, pos: float, vel: float = 0.0, acc: float = 0.0
+    @staticmethod
+    def _check_range(
+        *,
+        value: float,
+        minimum: float,
+        maximum: float,
+        label: str,
+        unit: str,
     ) -> None:
-        """
-        Update the current command to the desired position, when in position or position-velocity mode.
-        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
-        which will be sent when update() is called.
-
-        Args:
-            pos: The desired output angle in rad
-            vel: The desired speed to get there in rad/s (when in POSITION_VELOCITY mode)
-            acc: The desired acceleration to get there in rad/s/s, ish (when in POSITION_VELOCITY mode)
-        """
-        # Convert P_max from electrical units to radians for comparison
-        # P_max is in electrical degrees, convert to radians and account for gear ratio
-        p_max_rad = self.config.P_max * self.rad_per_Eang / self.config.GEAR_RATIO
-        if abs(pos) >= p_max_rad:
-            raise RuntimeError(
-                f"Cannot control using position mode for angles with magnitude greater than {p_max_rad} rad!"
+        """Reject non-finite values and values outside inclusive limits."""
+        if isinstance(value, bool):
+            raise TypeError(f"{label} must be a number")
+        if not math.isfinite(value):
+            raise ValueError(f"{label} must be finite")
+        if not minimum <= value <= maximum:
+            unit_suffix = f" {unit}" if unit else ""
+            raise ValueError(
+                f"{label} {value:g}{unit_suffix} is outside "
+                f"[{minimum:g}, {maximum:g}]{unit_suffix}"
             )
-
-        pos = pos / self.rad_per_Eang
-
-        if self._control_state == ControlMode.POSITION_VELOCITY:
-            v_max_rad_s = self.config.V_max * self.radps_per_ERPM
-            if abs(vel) >= v_max_rad_s:
-                raise RuntimeError(
-                    f"Cannot use position-velocity mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
-                )
-
-            vel = vel / self.radps_per_ERPM
-            acc = acc / self.radps_per_ERPM
-            if not -32768 <= int(vel) <= 32767:
-                raise RuntimeError(
-                    f"Position-velocity mode speed command {vel} ERPM is outside int16 range"
-                )
-            if not -32768 <= int(acc) <= 32767:
-                raise RuntimeError(
-                    f"Position-velocity mode acceleration command {acc} ERPM/s is outside int16 range"
-                )
-            self._command.position = pos
-            self._command.velocity = vel
-            self._command.acceleration = acc
-        elif self._control_state == ControlMode.POSITION:
-            self._command.position = pos
-        else:
-            raise RuntimeError(
-                f"Attempted to send position command without entering position control {self.device_info_string()}"
-            )
-
-    def set_duty_cycle_percent(self, duty: float) -> None:
-        """
-        Used for duty cycle mode, to set desired duty cycle.
-        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
-        which will be sent when update() is called.
-
-        Args:
-            duty: The desired duty cycle, (-1 to 1)
-        """
-        if self._control_state != ControlMode.DUTY_CYCLE:
-            raise RuntimeError(
-                f"Attempted to send duty cycle command without gains for device {self.device_info_string()}"
-            )
-        else:
-            if abs(duty) > 1:
-                raise RuntimeError(
-                    "Cannot control using duty cycle mode for duty cycles greater than 100%!"
-                )
-            self._command.duty = duty
-
-    def set_output_velocity_radians_per_second(self, vel: float) -> None:
-        """
-        Used for velocity mode to set output velocity command.
-        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
-        which will be sent when update() is called.
-
-        Args:
-            vel: The desired output speed in rad/s
-        """
-        # Convert V_max from ERPM to rad/s for comparison
-        v_max_rad_s = self.config.V_max * self.radps_per_ERPM
-        # Accept boundary commands robustly despite float representation and CAN quantization.
-        velocity_eps = max(1e-9, self.radps_per_ERPM * 1e-3)
-        if abs(vel) > v_max_rad_s + velocity_eps:
-            raise RuntimeError(
-                f"Cannot control using speed mode for velocity with magnitude greater than {v_max_rad_s} rad/s!"
-            )
-        if abs(vel) > v_max_rad_s:
-            vel = math.copysign(v_max_rad_s, vel)
-
-        if self._control_state != ControlMode.VELOCITY:
-            raise RuntimeError(
-                f"Attempted to send speed command without gains for device {self.device_info_string()}"
-            )
-        self._command.velocity = vel / self.radps_per_ERPM
-
-    def set_motor_current_qaxis_amps(self, current: float) -> None:
-        """
-        Used for current mode to set current command.
-        Note, this does not send a command, it updates the CubeMarsServoCAN's saved command,
-        which will be sent when update() is called.
-
-        Args:
-            current: the desired current in amps.
-        """
-        if self._control_state not in [
-            ControlMode.CURRENT_LOOP,
-            ControlMode.CURRENT_BRAKE,
-        ]:
-            raise RuntimeError(
-                f"Attempted to send current command before entering current mode for device {self.device_info_string()}"
-            )
-        if self._control_state == ControlMode.CURRENT_BRAKE and current < 0:
-            raise RuntimeError("Current brake mode requires non-negative current.")
-        # Enforce current limits (convert from scaled values in config)
-        if not (self.config.Curr_min / 100 <= current <= self.config.Curr_max / 100):
-            raise RuntimeError(
-                f"Current {current}A out of range [{self.config.Curr_min / 100}, {self.config.Curr_max / 100}]A"
-            )
-        self._command.current = current
-
-    def set_output_torque_newton_meters(self, torque: float) -> None:
-        """
-        Used for current mode to set current, based on desired torque.
-        If a more complicated torque model is available for the motor, that will be used.
-        Otherwise it will just use the motor's torque constant.
-
-        Args:
-            torque: The desired output torque in Nm.
-        """
-        # Enforce torque limits
-        if not (self.config.T_min <= torque <= self.config.T_max):
-            raise RuntimeError(
-                f"Torque {torque}Nm out of range [{self.config.T_min}, {self.config.T_max}]Nm"
-            )
-        self.set_motor_current_qaxis_amps(
-            torque / self.config.Kt_actual / self.config.GEAR_RATIO
-        )
-
-    # --- Motor-Side Wrappers ---
-
-    def set_motor_torque_newton_meters(self, torque: float) -> None:
-        """
-        Wrapper of set_output_torque that accounts for gear ratio to control motor-side torque
-
-        Args:
-            torque: The desired motor-side torque in Nm.
-        """
-        # Motor torque * GEAR_RATIO = Output torque
-        self.set_output_torque_newton_meters(torque * self.config.GEAR_RATIO)
-
-    def set_motor_angle_radians(self, pos: float) -> None:
-        """
-        Wrapper for set_output_angle that accounts for gear ratio to control motor-side angle
-
-        Args:
-            pos: The desired motor-side position in rad.
-        """
-        self.set_output_angle_radians(pos / self.config.GEAR_RATIO, 0.0, 0.0)
-
-    def set_motor_velocity_radians_per_second(self, vel: float) -> None:
-        """
-        Wrapper for set_output_velocity that accounts for gear ratio to control motor-side velocity
-
-        Args:
-            vel: The desired motor-side velocity in rad/s.
-        """
-        self.set_output_velocity_radians_per_second(vel / self.config.GEAR_RATIO)
-
-    def get_motor_angle_radians(self) -> float:
-        """
-        Wrapper for get_output_angle that accounts for gear ratio to get motor-side angle
-
-        Returns:
-            The most recently updated motor-side angle in rad.
-        """
-        return self._motor_state.position * self.rad_per_Eang * self.config.GEAR_RATIO
-
-    def get_motor_velocity_radians_per_second(self) -> float:
-        """
-        Wrapper for get_output_velocity that accounts for gear ratio to get motor-side velocity
-
-        Returns:
-            The most recently updated motor-side velocity in rad/s.
-        """
-        return self._motor_state.velocity * self.radps_per_ERPM * self.config.GEAR_RATIO
-
-    def get_motor_acceleration_radians_per_second_squared(self) -> float:
-        """
-        Wrapper for get_output_acceleration that accounts for gear ratio to get motor-side acceleration
-
-        Returns:
-            The most recently updated motor-side acceleration in rad/s/s.
-        """
-        return (
-            self._motor_state.acceleration
-            * self.radps_per_ERPM
-            * self.config.GEAR_RATIO
-        )
-
-    def get_motor_torque_newton_meters(self) -> float:
-        """
-        Wrapper for get_output_torque that accounts for gear ratio to get motor-side torque
-
-        Returns:
-            The most recently updated motor-side torque in Nm.
-        """
-        return self.get_output_torque_newton_meters() / self.config.GEAR_RATIO
-
-    # --- String Representations ---
-
-    def __str__(self) -> str:
-        """Prints the motor's device info and current"""
-        return (
-            f"{self.device_info_string()} | "
-            f"Position: {round(self.position, 3): 1f} rad | "
-            f"Velocity: {round(self.velocity, 3): 1f} rad/s | "
-            f"current: {round(self.current_qaxis, 3): 1f} A | "
-            f"temp: {round(self.temperature, 0): 1f} C"
-        )
-
-    def device_info_string(self) -> str:
-        """Prints the motor's ID and device type."""
-        return f"{self.type}  ID: {self.ID}"
-
-    def check_can_connection(self) -> bool:
-        """
-        Checks the motor's connection by attempting to send 10 startup messages.
-        If it gets responses, then the connection is confirmed.
-
-        Returns:
-            True if a connection is established and False otherwise.
-        """
-        if not self._entered:
-            raise RuntimeError(
-                "Tried to check_can_connection before entering motor control! Enter control using the __enter__ method, or instantiating the CubeMarsServoCAN in a with block."
-            )
-        listener = can.BufferedReader()
-        self._canman.notifier.add_listener(listener)
-        try:
-            start_time = time.time()
-            max_messages = 200
-            max_empty_polls = 100
-            power_on_echo = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFC])
-            power_off_echo = bytes([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFD])
-            for i in range(3):
-                self.power_on()
-                time.sleep(0.001)
-
-            # Wait for responses
-            time.sleep(0.05)
-
-            # Check for one plausible, parseable status frame from this motor.
-            messages_checked = 0
-            empty_polls = 0
-            while messages_checked < max_messages and empty_polls < max_empty_polls:
-                msg = listener.get_message(timeout=0.01)
-                if msg is None:
-                    empty_polls += 1
-                    continue
-                empty_polls = 0
-                messages_checked += 1
-                msg_timestamp = getattr(msg, "timestamp", None)
-                if (
-                    isinstance(msg_timestamp, (int, float))
-                    and msg_timestamp < start_time
-                ):
-                    continue
-
-                if not self._canman.is_status_arbitration_id(
-                    msg.arbitration_id, self.ID
-                ):
-                    continue
-
-                data = bytes(msg.data)
-                if len(data) != 8:
-                    continue
-
-                # Exclude looped-back command payloads on exact ID.
-                if msg.arbitration_id == self.ID and data in (
-                    power_on_echo,
-                    power_off_echo,
-                ):
-                    continue
-
-                try:
-                    self._canman.parse_servo_message(data)
-                except Exception:
-                    continue
-
-                return True
-
-            return False
-        finally:
-            self._canman.notifier.remove_listener(listener)
-
-    # --- Properties ---
-
-    temperature = property(
-        get_temperature_celsius, doc="Temperature in Degrees Celsius"
-    )
-
-    error = property(get_motor_error_code, doc="Motor error code. 0 means no error.")
-
-    current_qaxis = property(
-        get_current_qaxis_amps,
-        set_motor_current_qaxis_amps,
-        doc="Q-axis current in amps",
-    )
-
-    position = property(
-        get_output_angle_radians, set_output_angle_radians, doc="Output angle in rad"
-    )
-
-    velocity = property(
-        get_output_velocity_radians_per_second,
-        set_output_velocity_radians_per_second,
-        doc="Output velocity in rad/s",
-    )
-
-    acceleration = property(
-        get_output_acceleration_radians_per_second_squared,
-        doc="Output acceleration in rad/s/s",
-    )
-
-    torque = property(
-        get_output_torque_newton_meters,
-        set_output_torque_newton_meters,
-        doc="Output torque in Nm",
-    )
-
-    angle_motorside = property(
-        get_motor_angle_radians, set_motor_angle_radians, doc="Motor-side angle in rad"
-    )
-
-    velocity_motorside = property(
-        get_motor_velocity_radians_per_second,
-        set_motor_velocity_radians_per_second,
-        doc="Motor-side velocity in rad/s",
-    )
-
-    acceleration_motorside = property(
-        get_motor_acceleration_radians_per_second_squared,
-        doc="Motor-side acceleration in rad/s/s",
-    )
-
-    torque_motorside = property(
-        get_motor_torque_newton_meters,
-        set_motor_torque_newton_meters,
-        doc="Motor-side torque in Nm",
-    )

@@ -2,14 +2,12 @@
 
 A simplified, robust, and modern Python library for controlling CubeMars AK-series and AKA-series actuators (for example `AK40-10` and `AKA60-6`) via CAN bus in Servo Mode.
 
-**This project is a streamlined, refactor of the [TMotorCANControl](https://github.com/neurobionics/TMotorCANControl) library.**
-
 ---
 
 ## Key Features
 
 - **Refactor:** Modular codebase with strict type hinting, linting, and solid architecture.
-- **Zero Bloat:** Stripped of MIT mode and Serial control code to focus 100% on reliable Servo CAN operation.
+- **Zero Bloat:** Focused 100% on reliable Servo CAN operation.
 - **Modern Packaging:** Built with `uv` and `pyproject.toml` for fast, reliable dependency management.
 - **Advanced Configuration:** Safe defaults for AK-series motors with the ability to safely override parameters or define custom motors.
 - **Built-in Motor Presets:** `AK10-9`, `AK80-9`, `AK40-10`, and `AKA60-6`.
@@ -77,8 +75,8 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 
 - [**Usage Guide**](docs/usage.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 - [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
-- [**Changelog**](CHANGELOG.md): Release notes and validation summary.
-- [**Bug Fix Verification**](BUG_FIX_SUMMARY.md): Evidence-based bug register tied to tests.
+
+---
 
 ## Included Vendor Files
 
@@ -87,83 +85,46 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 
 ---
 
-## Project Structure
-
-The repository uses a `src` layout with focused test modules:
-
-```
-.
-├── src/
-│   └── cubemars_servo_can/
-│       ├── __init__.py
-│       ├── servo_can.py
-│       ├── can_manager.py
-│       ├── motor_state.py
-│       ├── config.py
-│       ├── constants.py
-│       └── utils.py
-├── tests/
-│   ├── conftest.py
-│   ├── test_can_manager.py
-│   ├── test_config.py
-│   ├── test_motor_state.py
-│   ├── test_servo_init_modes.py
-│   ├── test_servo_units_limits.py
-│   ├── test_servo_connection_errors.py
-│   ├── test_servo_context_update.py
-│   ├── test_servo_misc.py
-│   └── test_utils.py
-├── docs/
-│   ├── usage.md
-│   └── configuration.md
-├── BUG_FIX_SUMMARY.md
-└── CHANGELOG.md
-```
-
----
-
 ## Development
 
 To contribute to this library:
 
-1.  **Clone the repository:**
+1. Clone the repository:
 
-    ```bash
-    git clone https://github.com/sam0rr/cubemars_servo_can.git
-    cd cubemars_servo_can
-    ```
+```bash
+git clone https://github.com/sam0rr/cubemars_servo_can.git
+cd cubemars_servo_can
+```
 
-2.  **Install dependencies:**
+2. Install dependencies:
 
-    ```bash
-    uv sync
-    ```
+```bash
+uv sync
+```
 
-3.  **Check the types:**
+3. Run linting and formatting:
 
-    ```bash
-    uv run mypy
-    ```
+```bash
+uv run ruff check . --fix
+uv run ruff format .
+```
 
-4.  **Run linters and formatters:**
-    ```bash
-    uv run black . && uv run ruff check .
-    ```
+4. Run type check:
 
-### Testing
+```bash
+uv run mypy
+```
 
-The library includes a comprehensive test suite. Tests mock the CAN interface and do not require physical hardware or `sudo` privileges.
+5. Run dead code check:
 
-**Run all tests (coverage is enabled by default in pyproject.toml):**
+```bash
+uv run vulture
+```
+
+6. Run tests:
 
 ```bash
 uv run pytest
 ```
-
----
-
-## Credits
-
-Based on the original work by the [neurobionics](https://github.com/neurobionics/TMotorCANControl) team.
 
 ---

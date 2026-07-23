@@ -6,7 +6,7 @@ This guide covers how to initialize the motor and use the various control modes 
 
 ## Basic Initialization
 
-The library uses a context manager (`with` block) to safely handle the connection, power-on sequence, and shutdown.
+The library uses a context manager (`with` block) to safely handle connection validation and shutdown.
 
 Use one consistent no-`sudo` app runtime flow:
 
@@ -16,7 +16,7 @@ Use one consistent no-`sudo` app runtime flow:
 
 Default interface behavior:
 
-- `CubeMarsServoCAN(...)` defaults to `can0`.
+- `ServoConfig(...)` defaults to `can0`.
 - You only need to pass `can_channel` when using another interface (for example `can1`).
 
 ### Raspberry Pi Notes (Waveshare RS485 CAN HAT)
@@ -75,25 +75,36 @@ If your interface is `can1`, replace `can0` with `can1` in both the service file
 ### Application Example
 
 ```python
-from cubemars_servo_can import CubeMarsServoCAN
 import time
 
-# 1. Start motor control (interface must already be up via boot service).
-# can_channel defaults to "can0", so it can be omitted.
-with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1) as motor:
-    print("Motor Connected!")
+from cubemars_servo_can import CubeMarsServoCan, MotorModel, ServoConfig
 
-    # 2. Control Logic goes here
+config = ServoConfig(
+    motor=MotorModel.AK80_9,
+    motor_id=1,
+)
+
+# Start motor control (interface must already be up via the boot service).
+# can_channel defaults to "can0", so it can be omitted.
+with CubeMarsServoCan(config) as motor:
+    print("Motor connected!")
+
+    # Control logic goes here.
     # ...
 
     time.sleep(1)
-    # Motor automatically powers off when exiting this block
 ```
 
 If your interface is not `can0`, pass it explicitly:
 
 ```python
-with CubeMarsServoCAN(motor_type='AK80-9', motor_ID=1, can_channel='can1') as motor:
+config = ServoConfig(
+    motor=MotorModel.AK80_9,
+    motor_id=1,
+    can_channel="can1",
+)
+
+with CubeMarsServoCan(config) as motor:
     ...
 ```
 
@@ -107,152 +118,180 @@ uv run your_script.py
 
 ## Control Modes
 
-You must explicitly enter a control mode before sending commands for that mode.
+You must explicitly select a control mode before staging a command for that mode.
+Command setters stage values; `update()` checks fresh telemetry and safety state
+before transmitting.
 
-| Mode API                            | Sent CAN Command    |
-| ----------------------------------- | ------------------- |
-| `enter_duty_cycle_control()`        | `SET_DUTY`          |
-| `enter_current_control()`           | `SET_CURRENT`       |
-| `enter_current_brake_control()`     | `SET_CURRENT_BRAKE` |
-| `enter_velocity_control()`          | `SET_RPM`           |
-| `enter_position_control()`          | `SET_POS`           |
-| `enter_position_velocity_control()` | `SET_POS_SPD`       |
+| Mode API                                          | Sent CAN command    |
+| ------------------------------------------------- | ------------------- |
+| `set_control_mode(ControlMode.DUTY_CYCLE)`        | `SET_DUTY`          |
+| `set_control_mode(ControlMode.Q_AXIS_CURRENT)`    | `SET_CURRENT`       |
+| `set_control_mode(ControlMode.CURRENT_BRAKE)`     | `SET_CURRENT_BRAKE` |
+| `set_control_mode(ControlMode.VELOCITY)`          | `SET_RPM`           |
+| `set_control_mode(ControlMode.POSITION)`          | `SET_POS`           |
+| `set_control_mode(ControlMode.POSITION_VELOCITY)` | `SET_POS_SPD`       |
 
 ### 1. Position Mode (Most Common)
 
-Moves the motor to a specific angle (in radians).
+Moves the motor to a specific motor-shaft angle in radians.
 
 ```python
-motor.enter_position_control()
+motor.set_control_mode(ControlMode.POSITION)
 
-# Move to 180 degrees (3.14 radians)
-motor.set_motor_angle_radians(3.14)
+# Move the motor shaft to 180 degrees.
+motor.set_motor_position(3.14)
 motor.update()
 ```
 
 ### 2. Velocity Mode
 
-Controls the motor speed (in rad/s).
+Controls motor-shaft speed in radians per second.
 
 ```python
-motor.enter_velocity_control()
+motor.set_control_mode(ControlMode.VELOCITY)
 
-# Spin at 10 rad/s (~95 RPM)
-motor.set_motor_velocity_radians_per_second(10.0)
+# Spin the motor shaft at 10 rad/s.
+motor.set_motor_velocity(10.0)
 motor.update()
 ```
 
 ### 3. Current Loop Mode (Torque)
 
-Controls the torque directly.
+Controls torque through q-axis current.
 
 ```python
-motor.enter_current_control()
+motor.set_control_mode(ControlMode.Q_AXIS_CURRENT)
 
-# Apply 0.5 Nm of torque
-# The library automatically calculates the required current based on motor Kt
-motor.set_motor_torque_newton_meters(0.5)
+# Apply an estimated 0.5 Nm at the motor shaft.
+motor.set_motor_torque(0.5)
 motor.update()
 ```
+
+Torque conversion is an ideal estimate:
+
+`motor torque = current × Kt`
+
+`output torque = motor torque × gear ratio`
+
+It does not model gearbox loss, controller calibration, saturation, or
+temperature. Measure and calibrate when torque accuracy matters.
 
 ### 4. Position-Velocity Mode (Trapezoidal)
 
-Moves to a position but respects velocity and acceleration limits. Useful for smooth movements.
+Moves to an output position while respecting output-side velocity and
+acceleration limits.
 
 ```python
-motor.enter_position_velocity_control()
-
-# Target: 3.14 rad
-# Max Speed: 5.0 rad/s
-# Max Accel: 10.0 rad/s^2
-motor.set_output_angle_radians(3.14, 5.0, 10.0)
+motor.set_control_mode(ControlMode.POSITION_VELOCITY)
+motor.set_output_position(
+    3.14,
+    velocity_radians_per_second=5.0,
+    acceleration_radians_per_second_squared=10.0,
+)
 motor.update()
 ```
 
+Use `set_motor_position()` with the same keyword arguments when the position,
+velocity, and acceleration are expressed on the motor-shaft side.
+
 ### 5. Current Brake Mode
 
-Applies brake current to hold position.
+Applies a non-negative brake current to hold position.
 
 ```python
-motor.enter_current_brake_control()
-
-# Brake current must be non-negative
-motor.set_motor_current_qaxis_amps(2.0)
+motor.set_control_mode(ControlMode.CURRENT_BRAKE)
+motor.set_q_axis_current_amps(2.0)
 motor.update()
 ```
 
 ### 6. Duty Cycle Mode
 
-Controls PWM directly. Mostly for testing.
+Controls normalized duty cycle directly.
 
 ```python
-motor.enter_duty_cycle_control()
-motor.set_duty_cycle_percent(0.1) # 10% power
+motor.set_control_mode(ControlMode.DUTY_CYCLE)
+motor.set_duty_cycle(0.1)
 motor.update()
 ```
 
 ### 7. Zeroing
 
-Sets the current physical position as the new "0" (origin).
-
 ```python
-motor.set_zero_position()
+motor.set_origin(OriginMode.TEMPORARY)
+motor.set_origin(OriginMode.PERSISTENT)
 ```
+
+Origin operations are immediate and require an entered context. Temporary mode
+lasts until power loss. Persistent mode saves the current physical position in
+the motor's nonvolatile parameters; call it deliberately during setup rather
+than from a repeated control loop.
+
+### Idle
+
+`ControlMode.IDLE` is the default and sends zero q-axis current on each update.
+
+---
 
 ## Safety and Limits
 
-- Position, velocity, current, and torque commands are checked against motor config limits.
-- Position-velocity mode validates target velocity and acceleration before frame packing.
-- Current brake mode rejects negative current values.
-- Command setters are strict: invalid ranges raise `RuntimeError` instead of being silently clamped.
-- `max_mosfet_temp` defaults to `70.0`.
-- `update()` raises after `overtemp_trip_count` consecutive over-limit samples (default `3`).
-- A pre-trip thermal guard activates on over-limit telemetry and sends conservative hold/zero commands until cooldown hysteresis clears.
-- Thermal guard clears only when temperature drops to `max_mosfet_temp - cooldown_margin_c`.
-- Motor faults reported from CAN listener are raised on the next `update()` call.
-- `with CubeMarsServoCAN(...)` performs connection validation on entry.
-- `__exit__` / `close()` send a final zero-current command (`SET_CURRENT 0.0A`) for shutdown.
+- Position, velocity, current, and torque commands are checked against motor and
+  Servo protocol limits.
+- Position-velocity mode validates target velocity and acceleration before
+  frame packing.
+- Current brake mode rejects negative current.
+- Invalid modes, non-finite values, and out-of-range values raise typed
+  exceptions instead of being silently clamped.
+- Stale or malformed telemetry attempts zero current, then raises
+  `MotorConnectionError`.
+- A reported driver fault attempts zero current, then raises `MotorFaultError`.
+- The first over-temperature sample suppresses motion. The configured
+  consecutive count causes a typed thermal fault.
+- Position modes hold the latest reported position during the pre-trip thermal
+  guard; other modes send zero current.
+- The guard clears only below the configured cooldown margin.
+- `close()` is idempotent and attempts zero current before releasing resources.
+
+These are software safeguards, not a replacement for hardware limits,
+mechanical protection, an emergency stop, or commissioning tests.
 
 ### Runtime Safety Options
 
 ```python
-motor = CubeMarsServoCAN(
-    motor_type="AK80-9",
-    motor_ID=1,
-    overtemp_trip_count=3,
-    cooldown_margin_c=2.0,
+config = ServoConfig(
+    motor=MotorModel.AK80_9,
+    motor_id=1,
+    max_driver_temperature_celsius=70.0,
+    overtemperature_trip_count=3,
+    cooldown_margin_celsius=2.0,
+    telemetry_timeout_seconds=0.1,
 )
 ```
 
-- `overtemp_trip_count`: consecutive over-limit samples required before hard trip.
-- `cooldown_margin_c`: cooldown margin required before guard releases.
-
 ### Explicit Cleanup
 
-You can also manage cleanup without a `with` block:
+The context manager is the recommended lifecycle. You can call `close()` to end
+control early; repeated calls are safe, and context exit will not duplicate the
+cleanup.
 
-```python
-motor = CubeMarsServoCAN(motor_type="AK80-9", motor_ID=1)
-
-# ...
-
-motor.close()
-motor.detach_listener()
-motor.close_shared_can_manager()
-```
+---
 
 ## Telemetry (Reading State)
 
-You can read the motor state at any time after calling `motor.update()`.
+After a successful context entry, properties expose the most recent decoded
+sample. Call `update()` regularly so safety checks and commands run against
+fresh telemetry.
 
 ```python
 motor.update()
 
-print(f"Position: {motor.position:.3f} rad")
-print(f"Velocity: {motor.velocity:.3f} rad/s")
-print(f"Current:  {motor.current_qaxis:.3f} A")
-print(f"Torque:   {motor.torque:.3f} Nm")
-print(f"Temp:     {motor.temperature:.1f} °C")
+position = motor.output_position_radians
+velocity = motor.output_velocity_radians_per_second
+current = motor.q_axis_current_amps
+temperature = motor.temperature_celsius
+torque_estimate = motor.output_torque_newton_meters
 ```
+
+Motor-shaft position, velocity, acceleration, and torque estimates are also
+available through properties prefixed with `motor_`.
 
 ---
