@@ -89,13 +89,15 @@ def test_context_lifecycle_probes_once_and_releases(
     """Probe with zero current, prevent re-entry, and release deterministically."""
     servo = make_servo()
     assert enter_servo(servo) is servo
-    assert servo.is_connected
+    connected_after_entry = servo.is_connected
+    assert connected_after_entry
     assert len(can_harness.sent) == 1
     assert can_harness.sent[0].arbitration_id == 0x101
     with pytest.raises(RuntimeError, match="already entered"):
         servo.__enter__()
     servo.__exit__(None, None, None)
-    assert not servo.is_connected
+    connected_after_exit = servo.is_connected
+    assert not connected_after_exit
     assert len(can_harness.sent) == 2
     servo.close()
     assert len(can_harness.sent) == 2
