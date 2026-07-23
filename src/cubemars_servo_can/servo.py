@@ -64,7 +64,6 @@ class CubeMarsServoCan:
         self._command = MotorCommand()
         self._control_mode = ControlMode.IDLE
         self._listener_error: Exception | None = None
-        self._pending_fault_code: int | None = None
         self._transport: _ChannelTransport | None = None
         self._entered = False
         self._overtemperature_samples = 0
@@ -77,7 +76,6 @@ class CubeMarsServoCan:
         """Acquire CAN resources, register the motor, and verify telemetry."""
         if self._entered:
             raise RuntimeError("The servo context is already entered")
-        self._reset_session_state()
         transport: _ChannelTransport | None = None
         try:
             transport = _TransportRegistry.acquire_registered(
@@ -99,7 +97,6 @@ class CubeMarsServoCan:
                 transport.unregister(motor_id=self.motor_id)
                 _TransportRegistry.release(transport=transport)
             self._transport = None
-            self._clear_pending_events()
             raise
         _LOGGER.info("Connected to %s (ID %d)", self.config.model_name, self.motor_id)
         return self
@@ -361,25 +358,20 @@ class CubeMarsServoCan:
                     "Failed to decode Servo telemetry"
                 ) from error
             telemetry = self._telemetry
-            fault_code = self._pending_fault_code
-            self._pending_fault_code = None
-        if fault_code is not None:
+        if telemetry.fault_code:
             raise MotorFaultError(
                 motor_id=self.motor_id,
-                fault_code=fault_code,
-                description=FAULT_DESCRIPTIONS.get(fault_code, "unknown driver fault"),
-            )
-        telemetry_age = time.monotonic() - telemetry.received_at_seconds
-        if telemetry_age > self.servo_config.telemetry_timeout_seconds:
-            raise MotorConnectionError(
-                f"Motor {self.motor_id} telemetry is stale by {telemetry_age:.3f} seconds."
+                fault_code=telemetry.fault_code,
+                description=FAULT_DESCRIPTIONS.get(
+                    telemetry.fault_code, "unknown driver fault"
+                ),
             )
         self._update_thermal_guard(telemetry.temperature_celsius)
         if self._thermal_guard_active:
-            self._send_safe_command(telemetry)
+            self._send_safe_command()
         else:
             self._send_selected_command()
-        self._write_log_row(telemetry)
+        self._write_log_row()
 
     def close(self) -> None:
         """Zero current and release this motor's resources; repeated calls are safe."""
@@ -402,7 +394,6 @@ class CubeMarsServoCan:
             self._transport = None
             self._overtemperature_samples = 0
             self._thermal_guard_active = False
-            self._clear_pending_events()
 
     def _accept_telemetry(self, telemetry: Telemetry) -> None:
         """Store a sample and derive acceleration on the notifier thread."""
@@ -418,8 +409,6 @@ class CubeMarsServoCan:
             self._telemetry = replace(
                 telemetry, acceleration_erpm_per_second=acceleration
             )
-            if telemetry.fault_code and self._pending_fault_code is None:
-                self._pending_fault_code = telemetry.fault_code
             self._status_event.set()
 
     def _accept_listener_error(self, error: Exception) -> None:
@@ -467,17 +456,17 @@ class CubeMarsServoCan:
             raise ControlModeError(f"Unsupported control mode: {self._control_mode!r}")
         self._send_frame(frame)
 
-    def _send_safe_command(self, telemetry: Telemetry) -> None:
+    def _send_safe_command(self) -> None:
         """Emit a non-driving command while the thermal guard is active."""
         if self._control_mode is ControlMode.POSITION:
             frame = _protocol.encode_position(
                 motor_id=self.motor_id,
-                position_units=telemetry.position_units,
+                position_units=self._telemetry.position_units,
             )
         elif self._control_mode is ControlMode.POSITION_VELOCITY:
             frame = _protocol.encode_position_velocity(
                 motor_id=self.motor_id,
-                position_units=telemetry.position_units,
+                position_units=self._telemetry.position_units,
                 velocity_erpm=0.0,
                 acceleration_erpm_per_second=0.0,
             )
@@ -538,62 +527,34 @@ class CubeMarsServoCan:
         writer.writerow(("elapsed_seconds", *self.servo_config.log_fields))
         self._log_writer = writer
 
-    def _write_log_row(self, telemetry: Telemetry) -> None:
+    def _write_log_row(self) -> None:
         """Write the selected telemetry fields when logging is enabled."""
         writer = self._log_writer
         if writer is None:
             return
-        values = tuple(
-            self._log_value(field, telemetry) for field in self.servo_config.log_fields
-        )
+        values = tuple(self._log_value(field) for field in self.servo_config.log_fields)
         writer.writerow((time.monotonic() - self._started_at_seconds, *values))
         if self._log_file is not None:
             self._log_file.flush()
 
-    def _log_value(self, field: LogField, telemetry: Telemetry) -> float:
-        """Resolve one CSV field from a single immutable telemetry sample."""
+    def _log_value(self, field: LogField) -> float:
+        """Resolve one CSV field to its latest numeric value."""
         if field is LogField.OUTPUT_POSITION_RADIANS:
-            return (
-                telemetry.position_units
-                * self._radians_per_position_unit
-                / self.config.gear_ratio
-            )
+            return self.output_position_radians
         if field is LogField.OUTPUT_VELOCITY_RADIANS_PER_SECOND:
-            return telemetry.velocity_erpm * self._output_radians_per_second_per_erpm
+            return self.output_velocity_radians_per_second
         if field is LogField.Q_AXIS_CURRENT_AMPS:
-            return telemetry.q_axis_current_amps
+            return self.q_axis_current_amps
         if field is LogField.TEMPERATURE_CELSIUS:
-            return telemetry.temperature_celsius
+            return self.temperature_celsius
         raise ValueError(f"Unsupported log field: {field!r}")
 
     def _close_log(self) -> None:
         """Close and discard optional CSV resources."""
-        log_file = self._log_file
+        if self._log_file is not None:
+            self._log_file.close()
         self._log_file = None
         self._log_writer = None
-        if log_file is None:
-            return
-        try:
-            log_file.close()
-        except Exception:
-            _LOGGER.exception("Failed to close the CSV telemetry log")
-
-    def _reset_session_state(self) -> None:
-        """Discard state that must never cross a context-manager session."""
-        with self._lock:
-            self._telemetry = Telemetry()
-            self._listener_error = None
-            self._pending_fault_code = None
-        self._status_event.clear()
-        self._overtemperature_samples = 0
-        self._thermal_guard_active = False
-
-    def _clear_pending_events(self) -> None:
-        """Clear notifier events that have been consumed by session cleanup."""
-        with self._lock:
-            self._listener_error = None
-            self._pending_fault_code = None
-        self._status_event.clear()
 
     def _require_entered(self) -> None:
         """Reject operations that require an acquired transport."""

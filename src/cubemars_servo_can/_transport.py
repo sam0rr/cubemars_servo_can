@@ -64,12 +64,7 @@ class _ChannelTransport:
         try:
             self._notifier = can.Notifier(self._bus, [])
         except Exception as error:
-            try:
-                self._bus.shutdown()
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to close the CAN bus after notifier startup failed"
-                )
+            self._bus.shutdown()
             raise CanConnectionError(
                 f"Failed to start the CAN notifier on {channel!r}."
             ) from error

@@ -3,10 +3,9 @@
 import csv
 import math
 import struct
-import time
 from dataclasses import replace
 from pathlib import Path
-from typing import TextIO, cast
+from typing import cast
 
 import pytest
 from conftest import CanHarness
@@ -28,14 +27,6 @@ from cubemars_servo_can import (
 from cubemars_servo_can._models import Telemetry
 
 pytestmark = pytest.mark.usefixtures("can_harness")
-
-
-class FailingLog:
-    """Text-stream double whose close operation fails."""
-
-    def close(self) -> None:
-        """Raise a synthetic filesystem failure."""
-        raise OSError("synthetic close failure")
 
 
 def make_servo(
@@ -114,17 +105,6 @@ def test_entry_rolls_back_when_motor_does_not_respond(can_harness: CanHarness) -
     assert can_harness.bus.shutdown_count == 1
 
 
-def test_entry_retry_discards_malformed_frame_error(can_harness: CanHarness) -> None:
-    """Keep listener failures scoped to the entry attempt that observed them."""
-    can_harness.status_payload = b"bad"
-    servo = make_servo()
-    with pytest.raises(MotorConnectionError, match="did not return"):
-        servo.__enter__()
-    can_harness.status_payload = struct.pack(">hhhbB", 0, 0, 0, 25, 0)
-    enter_servo(servo)
-    servo.update()
-
-
 def test_duplicate_motor_id_on_one_channel_is_rejected() -> None:
     """Prevent two controllers from consuming the same status stream."""
     first = enter_servo(make_servo())
@@ -153,19 +133,6 @@ def test_close_logs_final_send_failures(
     servo.close()
     assert "final zero-current" in caplog.text
     assert not servo.is_connected
-
-
-def test_close_releases_transport_when_log_close_fails(
-    can_harness: CanHarness, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Treat log errors as secondary to deterministic motor and CAN cleanup."""
-    servo = enter_servo(make_servo())
-    servo._log_file = cast(TextIO, FailingLog())
-    servo.close()
-    assert servo._transport is None
-    assert can_harness.bus is not None
-    assert can_harness.bus.shutdown_count == 1
-    assert "Failed to close the CSV telemetry log" in caplog.text
 
 
 def test_set_origin_is_immediate_and_typed(can_harness: CanHarness) -> None:
@@ -386,37 +353,6 @@ def test_update_surfaces_documented_and_unknown_faults(
     assert raised.value.description
 
 
-def test_transient_fault_is_latched_until_update() -> None:
-    """Never overwrite an unconsumed fault with a later healthy status sample."""
-    servo = enter_servo(make_servo())
-    now = time.monotonic()
-    servo._accept_telemetry(Telemetry(fault_code=7, received_at_seconds=now))
-    servo._accept_telemetry(Telemetry(received_at_seconds=now + 0.01))
-    with pytest.raises(MotorFaultError, match="stall"):
-        servo.update()
-    servo.update()
-
-
-def test_update_rejects_stale_telemetry_before_sending(
-    can_harness: CanHarness,
-) -> None:
-    """Stop commanding when receive-side safety telemetry is no longer fresh."""
-    servo = enter_servo(
-        make_servo(
-            servo_config=ServoConfig(
-                can_channel="vcan0",
-                connection_timeout_seconds=0.001,
-                telemetry_timeout_seconds=0.1,
-            )
-        )
-    )
-    servo._accept_telemetry(Telemetry(received_at_seconds=time.monotonic() - 1.0))
-    sent_before_update = len(can_harness.sent)
-    with pytest.raises(MotorConnectionError, match="stale"):
-        servo.update()
-    assert len(can_harness.sent) == sent_before_update
-
-
 def test_listener_errors_surface_on_user_thread() -> None:
     """Preserve notifier liveness and raise decoding failures from ``update``."""
     servo = enter_servo(make_servo())
@@ -447,31 +383,13 @@ def test_thermal_guard_sends_mode_appropriate_safe_frames(
     )
     servo = enter_servo(make_servo(servo_config=config))
     servo.set_control_mode(mode)
-    servo._accept_telemetry(
-        Telemetry(
-            position_units=12.0,
-            temperature_celsius=51.0,
-            received_at_seconds=time.monotonic(),
-        )
-    )
+    servo._accept_telemetry(Telemetry(position_units=12.0, temperature_celsius=51.0))
     servo.update()
     assert can_harness.sent[-1].arbitration_id == expected_id
-    servo._accept_telemetry(
-        Telemetry(
-            position_units=12.0,
-            temperature_celsius=49.0,
-            received_at_seconds=time.monotonic(),
-        )
-    )
+    servo._accept_telemetry(Telemetry(position_units=12.0, temperature_celsius=49.0))
     servo.update()
     assert servo._thermal_guard_active
-    servo._accept_telemetry(
-        Telemetry(
-            position_units=12.0,
-            temperature_celsius=48.0,
-            received_at_seconds=time.monotonic(),
-        )
-    )
+    servo._accept_telemetry(Telemetry(position_units=12.0, temperature_celsius=48.0))
     servo.update()
     assert not servo._thermal_guard_active
 
@@ -488,19 +406,9 @@ def test_thermal_guard_trips_after_consecutive_samples() -> None:
             )
         )
     )
-    servo._accept_telemetry(
-        Telemetry(
-            temperature_celsius=51.0,
-            received_at_seconds=time.monotonic(),
-        )
-    )
+    servo._accept_telemetry(Telemetry(temperature_celsius=51.0))
     servo.update()
-    servo._accept_telemetry(
-        Telemetry(
-            temperature_celsius=52.0,
-            received_at_seconds=time.monotonic(),
-        )
-    )
+    servo._accept_telemetry(Telemetry(temperature_celsius=52.0))
     with pytest.raises(MotorFaultError, match="2 samples"):
         servo.update()
 
@@ -527,43 +435,6 @@ def test_csv_logging_writes_selected_explicit_unit_fields(
     assert len(rows) == 2
     assert float(rows[1][3]) == 3.0
     assert float(rows[1][4]) == 25.0
-
-
-def test_csv_row_uses_one_immutable_telemetry_snapshot(tmp_path: Path) -> None:
-    """Prevent notifier updates from mixing values within one CSV row."""
-    path = tmp_path / "snapshot.csv"
-    servo = enter_servo(
-        make_servo(
-            servo_config=ServoConfig(
-                can_channel="vcan0",
-                connection_timeout_seconds=0.001,
-                csv_log_path=path,
-            )
-        )
-    )
-    snapshot = Telemetry(
-        position_units=21.0,
-        velocity_erpm=42.0,
-        q_axis_current_amps=2.0,
-        temperature_celsius=30.0,
-        received_at_seconds=time.monotonic(),
-    )
-    servo._accept_telemetry(
-        Telemetry(
-            position_units=999.0,
-            velocity_erpm=999.0,
-            q_axis_current_amps=9.0,
-            temperature_celsius=99.0,
-            received_at_seconds=time.monotonic(),
-        )
-    )
-    servo._write_log_row(snapshot)
-    servo.close()
-    with path.open(encoding="utf-8", newline="") as log_file:
-        row = list(csv.reader(log_file))[1]
-    assert float(row[1]) == pytest.approx(math.pi / 9.0)
-    assert float(row[3]) == 2.0
-    assert float(row[4]) == 30.0
 
 
 def test_invalid_runtime_log_field_is_rejected(

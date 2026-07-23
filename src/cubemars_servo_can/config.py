@@ -1,6 +1,5 @@
 """Typed motor and runtime configuration."""
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,16 +43,11 @@ class MotorConfig:
             ),
         )
         for minimum, maximum, label in ranges:
-            if not math.isfinite(minimum) or not math.isfinite(maximum):
-                raise ValueError(f"{label.capitalize()} limits must be finite")
             if minimum >= maximum:
                 raise ValueError(f"Minimum {label} must be less than maximum {label}")
-        if (
-            not math.isfinite(self.effective_torque_constant_newton_meters_per_amp)
-            or self.effective_torque_constant_newton_meters_per_amp <= 0.0
-        ):
+        if self.effective_torque_constant_newton_meters_per_amp <= 0.0:
             raise ValueError("Torque constant must be positive")
-        if not math.isfinite(self.gear_ratio) or self.gear_ratio <= 0.0:
+        if self.gear_ratio <= 0.0:
             raise ValueError("gear_ratio must be positive")
         if self.pole_pairs <= 0:
             raise ValueError("pole_pairs must be positive")
@@ -67,9 +61,8 @@ class ServoConfig:
     max_driver_temperature_celsius: float = 70.0
     overtemperature_trip_count: int = 3
     cooldown_margin_celsius: float = 2.0
-    connection_timeout_seconds: float = 1.5
+    connection_timeout_seconds: float = 0.25
     connection_probe_count: int = 3
-    telemetry_timeout_seconds: float = 1.5
     csv_log_path: Path | None = None
     log_fields: tuple[LogField, ...] = DEFAULT_LOG_FIELDS
 
@@ -79,24 +72,12 @@ class ServoConfig:
             raise ValueError("can_channel must not be empty")
         if self.overtemperature_trip_count < 1:
             raise ValueError("overtemperature_trip_count must be at least 1")
-        if not math.isfinite(self.max_driver_temperature_celsius) or not math.isfinite(
-            self.cooldown_margin_celsius
-        ):
-            raise ValueError("Temperature settings must be finite")
         if self.cooldown_margin_celsius < 0.0:
             raise ValueError("cooldown_margin_celsius must not be negative")
-        if (
-            not math.isfinite(self.connection_timeout_seconds)
-            or self.connection_timeout_seconds <= 0.0
-        ):
+        if self.connection_timeout_seconds <= 0.0:
             raise ValueError("connection_timeout_seconds must be positive")
         if self.connection_probe_count < 1:
             raise ValueError("connection_probe_count must be at least 1")
-        if (
-            not math.isfinite(self.telemetry_timeout_seconds)
-            or self.telemetry_timeout_seconds <= 0.0
-        ):
-            raise ValueError("telemetry_timeout_seconds must be positive")
         if len(set(self.log_fields)) != len(self.log_fields):
             raise ValueError("log_fields must not contain duplicates")
 

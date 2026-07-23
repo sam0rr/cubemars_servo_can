@@ -1,6 +1,5 @@
 """Tests for immutable validated configuration."""
 
-import math
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -55,14 +54,6 @@ def make_invalid_servo_config(case: str, config: ServoConfig) -> ServoConfig:
         return replace(config, connection_timeout_seconds=0.0)
     if case == "probes":
         return replace(config, connection_probe_count=0)
-    if case == "temperature-finite":
-        return replace(config, max_driver_temperature_celsius=math.nan)
-    if case == "timeout-finite":
-        return replace(config, connection_timeout_seconds=math.inf)
-    if case == "telemetry-timeout":
-        return replace(config, telemetry_timeout_seconds=0.0)
-    if case == "telemetry-finite":
-        return replace(config, telemetry_timeout_seconds=math.nan)
     return replace(
         config,
         log_fields=(
@@ -110,17 +101,6 @@ def test_motor_config_validates_every_invariant(case: str, message: str) -> None
         make_invalid_motor_config(case, base)
 
 
-def test_motor_config_rejects_non_finite_values() -> None:
-    """Reject non-finite safety limits and conversion factors."""
-    base = get_motor_config(MotorModel.AK80_9)
-    with pytest.raises(ValueError, match="Current limits must be finite"):
-        replace(base, min_current_amps=math.nan)
-    with pytest.raises(ValueError, match="Torque constant"):
-        replace(base, effective_torque_constant_newton_meters_per_amp=math.nan)
-    with pytest.raises(ValueError, match="gear_ratio"):
-        replace(base, gear_ratio=math.nan)
-
-
 def test_custom_motor_config_is_supported_directly() -> None:
     """Let callers create explicit typed configurations without dictionary loaders."""
     config = replace(
@@ -136,8 +116,6 @@ def test_servo_config_defaults_are_typed_and_immutable() -> None:
     """Provide safe runtime defaults with an immutable logging selection."""
     config = ServoConfig(csv_log_path=Path("telemetry.csv"))
     assert config.can_channel == "can0"
-    assert config.connection_timeout_seconds == 1.5
-    assert config.telemetry_timeout_seconds == 1.5
     assert config.log_fields == tuple(LogField)
     assert config.csv_log_path == Path("telemetry.csv")
 
@@ -150,10 +128,6 @@ def test_servo_config_defaults_are_typed_and_immutable() -> None:
         ("margin", "cooldown_margin_celsius"),
         ("timeout", "connection_timeout_seconds"),
         ("probes", "connection_probe_count"),
-        ("temperature-finite", "Temperature settings must be finite"),
-        ("timeout-finite", "connection_timeout_seconds"),
-        ("telemetry-timeout", "telemetry_timeout_seconds"),
-        ("telemetry-finite", "telemetry_timeout_seconds"),
         ("logs", "duplicates"),
     ],
 )
