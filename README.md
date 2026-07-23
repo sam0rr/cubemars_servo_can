@@ -76,6 +76,8 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 - [**Usage Guide**](docs/usage.md): Detailed usage of Duty, Current, Velocity, and Position modes.
 - [**Configuration Guide**](docs/configuration.md): How to change gear ratios, limits, or add custom motors.
 
+---
+
 ## Included Vendor Files
 
 - [`AK40-10-firmware-and-parameters`](AK40-10-firmware-and-parameters): Vendor firmware, parameter dumps, and CAD artifacts for AK40-10.
