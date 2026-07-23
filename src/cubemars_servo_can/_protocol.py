@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from ._motor_state import ServoTelemetry
 from .constants import OriginMode, _PacketId
 
+CURRENT_BRAKE_LIMIT_AMPS = 60.0
+POSITION_LIMIT_DEGREES = 36_000.0
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class CanFrame:
@@ -52,7 +55,7 @@ def encode_current_brake(*, motor_id: int, current_amps: float) -> CanFrame:
     """Encode a non-negative current-brake command."""
     if current_amps < 0.0:
         raise ValueError("brake current must not be negative")
-    if current_amps > 60.0:
+    if current_amps > CURRENT_BRAKE_LIMIT_AMPS:
         raise ValueError("brake current exceeds the 60 A protocol limit")
     return scaled_int32_frame(
         motor_id=motor_id,
@@ -74,6 +77,7 @@ def encode_velocity(*, motor_id: int, velocity_erpm: float) -> CanFrame:
 
 def encode_position(*, motor_id: int, electrical_position_degrees: float) -> CanFrame:
     """Encode an electrical-position command in degrees."""
+    validate_position(electrical_position_degrees)
     return scaled_int32_frame(
         motor_id=motor_id,
         packet_id=_PacketId.SET_POSITION,
@@ -101,6 +105,7 @@ def encode_position_velocity(
     acceleration_erpm_per_second: float,
 ) -> CanFrame:
     """Encode a profiled position command in the manual's 10-ERPM units."""
+    validate_position(electrical_position_degrees)
     position = scaled_integer(electrical_position_degrees, 10_000.0, bits=32)
     velocity = scaled_integer(velocity_erpm, 0.1, bits=16)
     acceleration = scaled_integer(
@@ -165,6 +170,17 @@ def scaled_integer(value: float, scale: float, *, bits: int) -> int:
     if not minimum <= encoded <= maximum:
         raise ValueError(f"scaled value {encoded} is outside signed int{bits} range")
     return encoded
+
+
+def validate_position(electrical_position_degrees: float) -> None:
+    """Keep electrical-position commands within the Servo protocol range."""
+    if (
+        not math.isfinite(electrical_position_degrees)
+        or abs(electrical_position_degrees) > POSITION_LIMIT_DEGREES
+    ):
+        raise ValueError(
+            "electrical position must be finite and within ±36,000 degrees"
+        )
 
 
 def validate_motor_id(motor_id: int) -> None:

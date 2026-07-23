@@ -10,6 +10,8 @@ from typing import Self
 from ._can_manager import CanManager, CanManagerRegistry
 from ._motor_state import ServoCommand, ServoTelemetry
 from ._protocol import (
+    CURRENT_BRAKE_LIMIT_AMPS,
+    POSITION_LIMIT_DEGREES,
     CanFrame,
     encode_current,
     encode_current_brake,
@@ -243,12 +245,14 @@ class CubeMarsServoCan:
                 "current commands require q-axis-current or current-brake mode"
             )
         minimum = -self.config.current_limit_amps
+        maximum = self.config.current_limit_amps
         if self._control_mode is ControlMode.CURRENT_BRAKE:
             minimum = 0.0
+            maximum = min(maximum, CURRENT_BRAKE_LIMIT_AMPS)
         self._check_range(
             value=current_amps,
             minimum=minimum,
-            maximum=self.config.current_limit_amps,
+            maximum=maximum,
             label="Current",
             unit="A",
         )
@@ -273,6 +277,13 @@ class CubeMarsServoCan:
             raise ValueError("position must be finite")
         electrical_degrees = (
             position_radians / self._output_radians_per_electrical_degree
+        )
+        self._check_range(
+            value=electrical_degrees,
+            minimum=-POSITION_LIMIT_DEGREES,
+            maximum=POSITION_LIMIT_DEGREES,
+            label="Electrical position",
+            unit="degrees",
         )
         velocity_erpm = self._command.velocity_erpm
         acceleration_erpm_per_second = self._command.acceleration_erpm_per_second

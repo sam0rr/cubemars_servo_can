@@ -61,6 +61,21 @@ def restricted_motor() -> MotorConfig:
     )
 
 
+def high_current_motor() -> MotorConfig:
+    """Return custom data whose hardware current exceeds the brake protocol."""
+    return MotorConfig(
+        model="CUSTOM-HIGH-CURRENT",
+        pole_pairs=21,
+        gear_ratio=9.0,
+        max_velocity_erpm=32_000.0,
+        torque_constant_newton_meters_per_amp=0.095,
+        hardware_max_current_amps=100.0,
+        hardware_max_output_torque_newton_meters=100.0,
+        default_max_current_amps=80.0,
+        default_max_output_torque_newton_meters=50.0,
+    )
+
+
 def test_constructor_is_side_effect_free_and_typed(
     can_harness: CanHarness,
 ) -> None:
@@ -280,22 +295,45 @@ def test_control_mode_duty_and_current_validation() -> None:
         servo.set_q_axis_current_amps(math.nan)
 
 
+def test_brake_current_respects_its_protocol_limit() -> None:
+    """Apply the brake encoding cap even when custom hardware permits more."""
+    servo = make_servo(
+        ServoConfig(
+            motor=high_current_motor(),
+            motor_id=1,
+            max_current_amps=80.0,
+        )
+    )
+    servo.set_control_mode(ControlMode.CURRENT_BRAKE)
+    servo.set_q_axis_current_amps(60.0)
+    with pytest.raises(ValueError, match="outside"):
+        servo.set_q_axis_current_amps(60.1)
+    servo.set_control_mode(ControlMode.Q_AXIS_CURRENT)
+    servo.set_q_axis_current_amps(80.0)
+
+
 def test_position_commands_validate_modes_profiles_and_protocol_ranges() -> None:
     """Validate position and profile inputs before mutating staged state."""
     servo = make_servo()
     with pytest.raises(ControlModeError, match="position commands"):
         servo.set_output_position(0.0)
     servo.set_control_mode(ControlMode.POSITION)
-    previous_position = servo._command.electrical_position_degrees
     with pytest.raises(ValueError, match="finite"):
         servo.set_output_position(math.nan)
-    with pytest.raises(ValueError, match="int32"):
+    radians_per_electrical_degree = math.pi / (180.0 * 21.0 * 9.0)
+    servo.set_output_position(36_000.0 * radians_per_electrical_degree)
+    previous_position = servo._command.electrical_position_degrees
+    with pytest.raises(ValueError, match="outside"):
+        servo.set_output_position(36_000.1 * radians_per_electrical_degree)
+    with pytest.raises(ValueError, match="outside"):
         servo.set_output_position(1_000_000.0)
     with pytest.raises(ControlModeError, match="profile velocity"):
         servo.set_output_position(0.0, velocity_radians_per_second=1.0)
     assert servo._command.electrical_position_degrees == previous_position
 
     servo.set_control_mode(ControlMode.POSITION_VELOCITY)
+    with pytest.raises(ValueError, match="outside"):
+        servo.set_output_position(-36_000.1 * radians_per_electrical_degree)
     with pytest.raises(ValueError, match="Velocity"):
         servo.set_output_position(0.0, velocity_radians_per_second=100.0)
     with pytest.raises(ValueError, match="acceleration"):

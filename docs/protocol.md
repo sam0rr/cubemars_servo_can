@@ -23,6 +23,9 @@ All multi-byte integers are big-endian. Position/velocity frames contain eight
 bytes. The `0xFC` and `0xFD` eight-byte frames used by MIT Mode are deliberately
 absent from this Servo Mode lifecycle.
 
+Electrical-position commands are limited to ±36,000 degrees. Current-brake
+commands are limited to the inclusive range from 0 A to 60 A.
+
 ## Status
 
 The `0x29` payload layout is:

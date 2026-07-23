@@ -140,6 +140,33 @@ def test_motor_config_rejects_invalid_physical_data(
             lambda: ServoConfig(
                 motor=MotorModel.AK80_9,
                 motor_id=1,
+                overtemperature_trip_count=cast(int, 1.5),
+            ),
+            ValueError,
+            "positive integer",
+        ),
+        (
+            lambda: ServoConfig(
+                motor=MotorModel.AK80_9,
+                motor_id=1,
+                overtemperature_trip_count=cast(int, math.nan),
+            ),
+            ValueError,
+            "positive integer",
+        ),
+        (
+            lambda: ServoConfig(
+                motor=MotorModel.AK80_9,
+                motor_id=1,
+                overtemperature_trip_count=True,
+            ),
+            ValueError,
+            "positive integer",
+        ),
+        (
+            lambda: ServoConfig(
+                motor=MotorModel.AK80_9,
+                motor_id=1,
                 max_driver_temperature_celsius=math.nan,
             ),
             ValueError,
@@ -197,6 +224,6 @@ def test_servo_config_rejects_invalid_runtime_settings(
     error_type: type[Exception],
     message: str,
 ) -> None:
-    """Reject invalid addressing, safety, timing, and logging settings."""
+    """Reject invalid addressing, safety, and timing settings."""
     with pytest.raises(error_type, match=message):
         factory()

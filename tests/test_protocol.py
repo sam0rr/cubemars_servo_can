@@ -102,10 +102,17 @@ def test_protocol_rejects_malformed_and_out_of_range_values() -> None:
         _protocol.encode_current_brake(motor_id=1, current_amps=60.1)
     with pytest.raises(ValueError, match="finite"):
         _protocol.encode_current(motor_id=1, current_amps=math.inf)
-    with pytest.raises(ValueError, match="int32"):
+    with pytest.raises(ValueError, match="36,000"):
         _protocol.encode_position(
             motor_id=1,
             electrical_position_degrees=1_000_000.0,
+        )
+    with pytest.raises(ValueError, match="36,000"):
+        _protocol.encode_position_velocity(
+            motor_id=1,
+            electrical_position_degrees=-36_000.1,
+            velocity_erpm=0.0,
+            acceleration_erpm_per_second=0.0,
         )
     with pytest.raises(ValueError, match="int16"):
         _protocol.encode_position_velocity(

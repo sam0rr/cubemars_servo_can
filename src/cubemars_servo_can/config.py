@@ -124,8 +124,12 @@ class ServoConfig:
 
     def _validate_runtime_values(self) -> None:
         """Validate thermal and timing settings."""
-        if self.overtemperature_trip_count < 1:
-            raise ValueError("overtemperature_trip_count must be at least 1")
+        if (
+            not isinstance(self.overtemperature_trip_count, int)
+            or isinstance(self.overtemperature_trip_count, bool)
+            or self.overtemperature_trip_count < 1
+        ):
+            raise ValueError("overtemperature_trip_count must be a positive integer")
         finite_values = (
             (
                 self.max_driver_temperature_celsius,
