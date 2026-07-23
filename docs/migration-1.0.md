@@ -28,15 +28,15 @@ motor = CubeMarsServoCan(config)
 
 ## Modes and commands
 
-| Pre-1.0 | 1.0 |
-| --- | --- |
-| `enter_velocity_control()` | `set_control_mode(ControlMode.VELOCITY)` |
-| `enter_current_control()` | `set_control_mode(ControlMode.Q_AXIS_CURRENT)` |
-| `enter_position_control()` | `set_control_mode(ControlMode.POSITION)` |
-| `set_output_velocity_radians_per_second(value)` | `set_output_velocity(value)` |
-| `set_motor_current_qaxis_amps(value)` | `set_q_axis_current_amps(value)` |
-| `set_output_angle_radians(value)` | `set_output_position(value)` |
-| `set_zero_position()` | `set_origin(OriginMode.TEMPORARY)` |
+| Pre-1.0                                         | 1.0                                            |
+| ----------------------------------------------- | ---------------------------------------------- |
+| `enter_velocity_control()`                      | `set_control_mode(ControlMode.VELOCITY)`       |
+| `enter_current_control()`                       | `set_control_mode(ControlMode.Q_AXIS_CURRENT)` |
+| `enter_position_control()`                      | `set_control_mode(ControlMode.POSITION)`       |
+| `set_output_velocity_radians_per_second(value)` | `set_output_velocity(value)`                   |
+| `set_motor_current_qaxis_amps(value)`           | `set_q_axis_current_amps(value)`               |
+| `set_output_angle_radians(value)`               | `set_output_position(value)`                   |
+| `set_zero_position()`                           | `set_origin(OriginMode.TEMPORARY)`             |
 
 Use the explicit-unit telemetry properties documented in
 [Usage](usage.md#telemetry).

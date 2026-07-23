@@ -9,14 +9,14 @@ and exactly eight payload bytes.
 
 ## Commands
 
-| Function | ID | Payload |
-| --- | ---: | --- |
-| Duty cycle | `0x00` | signed int32, duty × 100,000 |
-| Q-axis current | `0x01` | signed int32, amps × 1,000 |
-| Current brake | `0x02` | signed int32, amps × 1,000 |
-| Velocity | `0x03` | signed int32 ERPM |
-| Position | `0x04` | signed int32, electrical degrees × 10,000 |
-| Origin | `0x05` | one byte: temporary `0`, persistent `1` |
+| Function          |     ID | Payload                                                      |
+| ----------------- | -----: | ------------------------------------------------------------ |
+| Duty cycle        | `0x00` | signed int32, duty × 100,000                                 |
+| Q-axis current    | `0x01` | signed int32, amps × 1,000                                   |
+| Current brake     | `0x02` | signed int32, amps × 1,000                                   |
+| Velocity          | `0x03` | signed int32 ERPM                                            |
+| Position          | `0x04` | signed int32, electrical degrees × 10,000                    |
+| Origin            | `0x05` | one byte: temporary `0`, persistent `1`                      |
 | Position/velocity | `0x06` | int32 position, int16 velocity ÷ 10, int16 acceleration ÷ 10 |
 
 All multi-byte integers are big-endian. Position/velocity frames contain eight
@@ -27,13 +27,13 @@ absent from this Servo Mode lifecycle.
 
 The `0x29` payload layout is:
 
-| Bytes | Type | Value |
-| --- | --- | --- |
-| 0–1 | signed int16 | electrical position × 0.1 degrees |
-| 2–3 | signed int16 | velocity × 10 ERPM |
-| 4–5 | signed int16 | q-axis current × 0.01 A |
-| 6 | signed int8 | driver temperature in °C |
-| 7 | unsigned int8 | fault code |
+| Bytes | Type          | Value                             |
+| ----- | ------------- | --------------------------------- |
+| 0–1   | signed int16  | electrical position × 0.1 degrees |
+| 2–3   | signed int16  | velocity × 10 ERPM                |
+| 4–5   | signed int16  | q-axis current × 0.01 A           |
+| 6     | signed int8   | driver temperature in °C          |
+| 7     | unsigned int8 | fault code                        |
 
 Fault descriptions include MOSFET over-temperature (`6`) and motor stall
 (`7`) according to the current driver manual.

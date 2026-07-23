@@ -21,28 +21,28 @@ copy helpers, deprecated names, or compatibility aliases.
 
 ## Built-in motor data
 
-| Model | Pole pairs | Gear ratio | Max ERPM | Kt (Nm/A) | Hardware current | Default current | Hardware output torque | Default output torque |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| AK10-9 | 21 | 9 | 60,000 | 0.160 | 31.9 A | 15.0 A | 53.0 Nm | 15.0 Nm |
-| AK40-10 | 14 | 10 | 60,000 | 0.056 | 7.3 A | 7.3 A | 4.1 Nm | 4.0 Nm |
-| AK80-9 | 21 | 9 | 32,000 | 0.095 | 28.0 A | 15.0 A | 22.0 Nm | 12.5 Nm |
-| AKA60-6 | 14 | 6 | 50,000 | 0.11937 | 11.2 A | 11.2 A | 9.0 Nm | 8.0 Nm |
+| Model   | Pole pairs | Gear ratio | Max ERPM | Kt (Nm/A) | Hardware current | Default current | Hardware output torque | Default output torque |
+| ------- | ---------: | ---------: | -------: | --------: | ---------------: | --------------: | ---------------------: | --------------------: |
+| AK10-9  |         21 |          9 |   60,000 |     0.160 |           31.9 A |          15.0 A |                53.0 Nm |               15.0 Nm |
+| AK40-10 |         14 |         10 |   60,000 |     0.056 |            7.3 A |           7.3 A |                 4.1 Nm |                4.0 Nm |
+| AK80-9  |         21 |          9 |   32,000 |     0.095 |           28.0 A |          15.0 A |                22.0 Nm |               12.5 Nm |
+| AKA60-6 |         14 |          6 |   50,000 |   0.11937 |           11.2 A |          11.2 A |                 9.0 Nm |                8.0 Nm |
 
 Hardware maxima are reference data, not default commands. An explicit override
 may lower a default cap but cannot exceed the corresponding hardware maximum.
 
 ## Runtime fields
 
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `can_channel` | `"can0"` | Existing SocketCAN channel |
-| `max_current_amps` | model default | Symmetric q-axis current cap |
-| `max_output_torque_newton_meters` | model default | Symmetric ideal output-torque cap |
-| `max_driver_temperature_celsius` | `70.0` | Thermal guard threshold |
-| `overtemperature_trip_count` | `3` | Consecutive hot samples before fault |
-| `cooldown_margin_celsius` | `2.0` | Hysteresis before the guard clears |
-| `connection_timeout_seconds` | `1.5` | Context-entry fresh-status timeout |
-| `telemetry_timeout_seconds` | `0.1` | Maximum telemetry age during update |
+| Field                             | Default       | Meaning                              |
+| --------------------------------- | ------------- | ------------------------------------ |
+| `can_channel`                     | `"can0"`      | Existing SocketCAN channel           |
+| `max_current_amps`                | model default | Symmetric q-axis current cap         |
+| `max_output_torque_newton_meters` | model default | Symmetric ideal output-torque cap    |
+| `max_driver_temperature_celsius`  | `70.0`        | Thermal guard threshold              |
+| `overtemperature_trip_count`      | `3`           | Consecutive hot samples before fault |
+| `cooldown_margin_celsius`         | `2.0`         | Hysteresis before the guard clears   |
+| `connection_timeout_seconds`      | `1.5`         | Context-entry fresh-status timeout   |
+| `telemetry_timeout_seconds`       | `0.1`         | Maximum telemetry age during update  |
 
 ## Custom motor
 
