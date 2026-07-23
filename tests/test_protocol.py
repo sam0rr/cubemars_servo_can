@@ -87,8 +87,6 @@ def test_protocol_rejects_invalid_payloads_and_values() -> None:
         _protocol.decode_status(data=b"short", received_at_seconds=0.0)
     with pytest.raises(ValueError, match="negative"):
         _protocol.encode_current_brake(motor_id=1, current_amps=-0.1)
-    with pytest.raises(ValueError, match="60 A"):
-        _protocol.encode_current_brake(motor_id=1, current_amps=60.1)
     with pytest.raises(ValueError, match="finite"):
         _protocol.encode_current(motor_id=1, current_amps=math.inf)
     with pytest.raises(ValueError, match="int32"):

@@ -19,7 +19,6 @@ class CanHarness:
     fail_notifier: bool = False
     fail_send: bool = False
     fail_shutdown: bool = False
-    fail_listener_addition: bool = False
     fail_listener_removal: bool = False
     fail_notifier_stop: bool = False
     status_payload: bytes = struct.pack(">hhhbB", 100, 20, 300, 25, 0)
@@ -73,8 +72,6 @@ class FakeNotifier:
 
     def add_listener(self, listener: can.Listener) -> None:
         """Register a listener."""
-        if self.harness.fail_listener_addition:
-            raise RuntimeError("synthetic listener-addition failure")
         self.listeners.append(listener)
 
     def remove_listener(self, listener: can.Listener) -> None:

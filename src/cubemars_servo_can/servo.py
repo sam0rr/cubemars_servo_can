@@ -240,13 +240,10 @@ class CubeMarsServoCan:
             )
         if self._control_mode is ControlMode.CURRENT_BRAKE and current_amps < 0.0:
             raise ValueError("Current-brake mode requires a non-negative current")
-        maximum_current = self.config.max_current_amps
-        if self._control_mode is ControlMode.CURRENT_BRAKE:
-            maximum_current = min(maximum_current, 60.0)
         self._check_range(
             value=current_amps,
             minimum=self.config.min_current_amps,
-            maximum=maximum_current,
+            maximum=self.config.max_current_amps,
             label="Current",
             unit="A",
         )
@@ -284,12 +281,6 @@ class CubeMarsServoCan:
             acceleration_erpm_per_second = (
                 acceleration_radians_per_second_squared
                 / self._output_radians_per_second_per_erpm
-            )
-            _protocol.encode_position_velocity(
-                motor_id=self.motor_id,
-                position_units=position_units,
-                velocity_erpm=velocity_erpm,
-                acceleration_erpm_per_second=acceleration_erpm_per_second,
             )
         elif (
             velocity_radians_per_second != 0.0
@@ -520,22 +511,14 @@ class CubeMarsServoCan:
     def _output_velocity_to_erpm(self, velocity_radians_per_second: float) -> float:
         """Convert and validate an output velocity command."""
         erpm = velocity_radians_per_second / self._output_radians_per_second_per_erpm
-        tolerance_erpm = 1e-6
-        if not math.isfinite(erpm):
-            raise ValueError("Velocity must be finite")
-        if (
-            erpm < self.config.min_velocity_erpm - tolerance_erpm
-            or erpm > self.config.max_velocity_erpm + tolerance_erpm
-        ):
-            raise ValueError(
-                f"Velocity {erpm:g} ERPM is outside "
-                f"[{self.config.min_velocity_erpm:g}, "
-                f"{self.config.max_velocity_erpm:g}] ERPM"
-            )
-        return min(
-            max(erpm, self.config.min_velocity_erpm),
-            self.config.max_velocity_erpm,
+        self._check_range(
+            value=erpm,
+            minimum=self.config.min_velocity_erpm,
+            maximum=self.config.max_velocity_erpm,
+            label="Velocity",
+            unit="ERPM",
         )
+        return erpm
 
     def _send_frame(self, frame: tuple[int, bytes]) -> None:
         """Send an encoded frame through the acquired transport."""

@@ -24,9 +24,6 @@ unknown high byte is not treated as status.
 Status scales are 0.1 position units, 10 ERPM, and 0.01 A. Fault code 6 is the
 MOSFET over-temperature fault and code 7 is motor stall.
 
-Current-brake commands are independently capped at the protocol's 60 A maximum,
-even when a custom motor configuration declares a higher general current limit.
-
 The library does not send the `FF FF FF FF FF FF FF FC/FD` MIT-mode enter/exit
 frames. Connection probes and shutdown use Servo current command `0 A`.
 

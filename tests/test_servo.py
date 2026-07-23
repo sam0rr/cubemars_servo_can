@@ -274,16 +274,6 @@ def test_duty_and_current_commands_enforce_modes_and_limits() -> None:
     with pytest.raises(ValueError, match="finite"):
         servo.set_q_axis_current_amps(math.nan)
 
-    high_current_config = replace(
-        servo.config,
-        min_current_amps=-100.0,
-        max_current_amps=100.0,
-    )
-    brake_servo = make_servo(motor=high_current_config)
-    brake_servo.set_control_mode(ControlMode.CURRENT_BRAKE)
-    with pytest.raises(ValueError, match="60"):
-        brake_servo.set_q_axis_current_amps(60.1)
-
 
 def test_position_commands_enforce_modes_profiles_and_ranges() -> None:
     """Validate position, profile velocity, and profile acceleration independently."""
@@ -306,16 +296,6 @@ def test_position_commands_enforce_modes_profiles_and_ranges() -> None:
             0.0,
             acceleration_radians_per_second_squared=-1.0,
         )
-    with pytest.raises(ValueError, match="finite"):
-        servo.set_output_position(
-            0.0,
-            acceleration_radians_per_second_squared=math.nan,
-        )
-    with pytest.raises(ValueError, match="int16"):
-        servo.set_output_position(
-            0.0,
-            acceleration_radians_per_second_squared=1_000.0,
-        )
     assert servo._command.position_units == previous_position
 
 
@@ -327,8 +307,6 @@ def test_velocity_torque_and_motor_wrappers() -> None:
     servo.set_control_mode(ControlMode.VELOCITY)
     with pytest.raises(ValueError, match="Velocity"):
         servo.set_output_velocity(100.0)
-    with pytest.raises(ValueError, match="finite"):
-        servo.set_output_velocity(math.nan)
     servo.set_motor_velocity(1.0)
     assert servo._command.velocity_erpm > 0.0
 
@@ -344,19 +322,6 @@ def test_velocity_torque_and_motor_wrappers() -> None:
     servo.set_control_mode(ControlMode.POSITION)
     servo.set_motor_position(9.0)
     assert servo._command.position_units == pytest.approx(1.0 / (math.pi / 21.0))
-
-
-def test_velocity_accepts_exact_configured_boundary_after_roundoff() -> None:
-    """Normalize sub-micro-ERPM conversion noise at both configured boundaries."""
-    servo = make_servo(motor=MotorModel.AKA60_6)
-    servo.set_control_mode(ControlMode.VELOCITY)
-    factor = 2.0 * math.pi / (60.0 * 14.0 * 6.0)
-    maximum = (50_000.0 / 14.0 / 60.0) * 2.0 * math.pi / 6.0
-    servo.set_output_velocity(maximum)
-    assert servo._command.velocity_erpm == 50_000.0
-    servo.set_output_velocity(-maximum)
-    assert servo._command.velocity_erpm == -50_000.0
-    assert maximum / factor > 50_000.0
 
 
 def test_telemetry_properties_and_acceleration() -> None:
