@@ -340,10 +340,22 @@ class CubeMarsServoCan:
         )
         self.set_q_axis_current_amps(current_amps)
 
-    def set_motor_position(self, position_radians: float) -> None:
-        """Stage a motor-shaft position in radians."""
+    def set_motor_position(
+        self,
+        position_radians: float,
+        *,
+        velocity_radians_per_second: float = 0.0,
+        acceleration_radians_per_second_squared: float = 0.0,
+    ) -> None:
+        """Stage motor-shaft position and optional motor-shaft profile."""
         self.set_output_position(
             position_radians / self.motor_config.gear_ratio,
+            velocity_radians_per_second=(
+                velocity_radians_per_second / self.motor_config.gear_ratio
+            ),
+            acceleration_radians_per_second_squared=(
+                acceleration_radians_per_second_squared / self.motor_config.gear_ratio
+            ),
         )
 
     def set_motor_velocity(self, velocity_radians_per_second: float) -> None:

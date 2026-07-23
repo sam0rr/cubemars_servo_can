@@ -386,6 +386,18 @@ def test_velocity_torque_and_motor_side_wrappers() -> None:
     servo.set_control_mode(ControlMode.POSITION)
     servo.set_motor_position(9.0)
     assert servo._command.motor_position_degrees == pytest.approx(9.0 * 180.0 / math.pi)
+    servo.set_control_mode(ControlMode.POSITION_VELOCITY)
+    servo.set_motor_position(
+        0.1,
+        velocity_radians_per_second=0.2,
+        acceleration_radians_per_second_squared=0.3,
+    )
+    motor_radians_per_erpm = 2.0 * math.pi / (60.0 * 21.0)
+    assert servo._command.motor_position_degrees == pytest.approx(0.1 * 180.0 / math.pi)
+    assert servo._command.velocity_erpm == pytest.approx(0.2 / motor_radians_per_erpm)
+    assert servo._command.acceleration_erpm_per_second == pytest.approx(
+        0.3 / motor_radians_per_erpm
+    )
 
 
 def test_velocity_accepts_exact_boundary_after_roundoff() -> None:

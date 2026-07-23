@@ -191,6 +191,9 @@ motor.set_output_position(
 motor.update()
 ```
 
+Use `set_motor_position()` with the same keyword arguments when the position,
+velocity, and acceleration are expressed on the motor-shaft side.
+
 ### 5. Current Brake Mode
 
 Applies a non-negative brake current to hold position.
