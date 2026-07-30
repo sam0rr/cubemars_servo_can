@@ -56,7 +56,7 @@ extend-select = [
 
     # Imports, modernization, performance, and maintainability.
     "I",       # Import ordering
-    "UP",      # Modernize syntax for Python 3.13
+    "UP",      # Modernize syntax for the Python target
     "FURB",    # Stable Refurb modernization checks
     "C4",      # Improve comprehensions
     "RUF005",  # Prefer unpacking over collection concatenation
