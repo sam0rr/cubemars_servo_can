@@ -87,7 +87,7 @@ pip install --upgrade git+https://github.com/sam0rr/cubemars_servo_can.git
 
 ## Development
 
-To contribute to this library:
+To contribute to this project:
 
 1. Clone the repository:
 
